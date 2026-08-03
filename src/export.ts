@@ -96,11 +96,6 @@ export function buildStandaloneSvgDocument(body: string, options: SvgExportOptio
   ].join('')
 }
 
-/** Clones the rendered contents into a new root with no dependency on app CSS. */
-export function serializeStandaloneSvg(source: SVGSVGElement, options: SvgExportOptions): string {
-  return buildStandaloneSvgDocument(source.innerHTML, options)
-}
-
 export function fitRasterDimensions(
   aspectWidth: number,
   aspectHeight: number,

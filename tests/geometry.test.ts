@@ -8,6 +8,7 @@ import {
   topologySignature,
   unwrapCycle,
 } from '../src/geometry/kernel'
+import { compilePeriodicArrangement } from '../src/geometry/arrangement'
 
 const cell = {
   origin: { x: 0, y: 0 },
@@ -70,5 +71,43 @@ describe('periodic geometry kernel', () => {
 
     expect(positive).toBeGreaterThan(0)
     expect(Math.abs(collinear)).toBe(0)
+  })
+
+  it('discovers crossings against translated neighbor representatives', () => {
+    const graph = compilePeriodicArrangement(
+      { origin: { x: 0, y: 0 }, a: { x: 100, y: 0 }, b: { x: 0, y: 100 } },
+      [
+        { id: 'wrapped-horizontal', role: 'ornament', points: [{ x: 90, y: 50 }, { x: 110, y: 50 }], closed: false, netWrap: { u: 0, v: 0 } },
+        { id: 'vertical', role: 'ornament', points: [{ x: 5, y: 40 }, { x: 5, y: 60 }], closed: false, netWrap: { u: 0, v: 0 } },
+      ],
+    )
+
+    expect(graph.crossings.some((crossing) => crossing.kind === 'intersection')).toBe(true)
+  })
+
+  it('normalizes equivalent torus representatives to one topology signature', () => {
+    const periodicCell = { origin: { x: 0, y: 0 }, a: { x: 100, y: 0 }, b: { x: 0, y: 100 } }
+    const vertical = { id: 'vertical', role: 'ornament' as const, points: [{ x: 5, y: 40 }, { x: 5, y: 60 }], closed: false, netWrap: { u: 0, v: 0 } }
+    const rightRepresentative = compilePeriodicArrangement(periodicCell, [
+      { id: 'horizontal', role: 'ornament', points: [{ x: 90, y: 50 }, { x: 110, y: 50 }], closed: false, netWrap: { u: 0, v: 0 } },
+      vertical,
+    ])
+    const leftRepresentative = compilePeriodicArrangement(periodicCell, [
+      { id: 'horizontal', role: 'ornament', points: [{ x: -10, y: 50 }, { x: 10, y: 50 }], closed: false, netWrap: { u: 0, v: 0 } },
+      vertical,
+    ])
+
+    expect(topologySignature(rightRepresentative)).toBe(topologySignature(leftRepresentative))
+  })
+
+  it('doubles weave phase for a periodic strand with one crossing per circuit', () => {
+    const periodicCell = { origin: { x: 0, y: 0 }, a: { x: 100, y: 0 }, b: { x: 0, y: 100 } }
+    const graph = compilePeriodicArrangement(periodicCell, [
+      { id: 'horizontal', role: 'ornament', points: [{ x: 0, y: 50 }, { x: 100, y: 50 }], closed: false, netWrap: { u: 1, v: 0 } },
+      { id: 'vertical', role: 'ornament', points: [{ x: 50, y: 0 }, { x: 50, y: 100 }], closed: false, netWrap: { u: 0, v: 1 } },
+    ])
+
+    expect(graph.crossings).toHaveLength(1)
+    expect(graph.crossings[0]?.weavePhase).toEqual({ u: 1, v: 1 })
   })
 })

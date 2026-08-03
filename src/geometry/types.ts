@@ -28,8 +28,15 @@ export type PeriodicCycle = Readonly<{
   netWrap: LatticeOffset
 }>
 
+export type PeriodicStrand = PeriodicCycle & Readonly<{
+  role: 'strand' | 'ornament' | 'accent'
+  pathClosed: boolean
+  continuationId: string
+}>
+
 export type Crossing = Readonly<{
   id: string
+  kind: 'intersection' | 'contact'
   vertex: string
   armsCCW: readonly [string, string, string, string]
   continuations: readonly [
@@ -37,6 +44,8 @@ export type Crossing = Readonly<{
     readonly [string, string],
   ]
   overPair: 0 | 1
+  /** Over/under phase toggled by translated lattice representatives. */
+  weavePhase: Readonly<{ u: 0 | 1; v: 0 | 1 }>
 }>
 
 export type PeriodicGraph = Readonly<{
@@ -44,12 +53,13 @@ export type PeriodicGraph = Readonly<{
   vertices: readonly PeriodicVertex[]
   halfEdges: readonly PeriodicHalfEdge[]
   faces: readonly PeriodicCycle[]
-  strands: readonly PeriodicCycle[]
+  strands: readonly PeriodicStrand[]
   crossings: readonly Crossing[]
 }>
 
 export type ScenePath = Readonly<{
   id: string
+  continuationId?: string
   role: 'strand' | 'ornament' | 'accent'
   points: readonly Vec2[]
   closed: boolean

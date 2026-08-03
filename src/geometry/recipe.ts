@@ -1,4 +1,5 @@
-import { buildPeriodicGrid, latticePoint, strandScenePaths } from './kernel'
+import { compilePeriodicArrangement } from './arrangement'
+import { latticePoint, strandScenePaths } from './kernel'
 import type {
   CompiledPattern,
   LatticeCell,
@@ -43,9 +44,11 @@ export type StarMotifRecipe = Readonly<{
 
 export type AccentLink = Readonly<{
   id: string
+  continuationId?: string
   motifId: string
   fromPoint: number
-  toPoint: number
+  toPoint?: number
+  toCell?: Readonly<{ u: number; v: number }>
 }>
 
 export type ConstructionRecipe = Readonly<{
@@ -162,10 +165,15 @@ function ornamentPaths(recipe: ConstructionRecipe, morph: number): ScenePath[] {
     const points = pointsByMotif.get(link.motifId)
     if (points === undefined) throw new Error(`Unknown motif ${link.motifId} in ${link.id}`)
     const from = points[((link.fromPoint % points.length) + points.length) % points.length]
-    const to = points[((link.toPoint % points.length) + points.length) % points.length]
+    const to = link.toCell
+      ? latticePoint(recipe.cell, link.toCell.u, link.toCell.v)
+      : link.toPoint === undefined
+        ? undefined
+        : points[((link.toPoint % points.length) + points.length) % points.length]
     if (from === undefined || to === undefined) continue
     paths.push({
       id: `link:${link.id}`,
+      ...(link.continuationId ? { continuationId: link.continuationId } : {}),
       role: 'accent',
       points: [from, to],
       closed: false,
@@ -176,17 +184,36 @@ function ornamentPaths(recipe: ConstructionRecipe, morph: number): ScenePath[] {
   return paths
 }
 
+function scaffoldPaths(recipe: ConstructionRecipe, morph: number): ScenePath[] {
+  const { columns, rows } = recipe.scaffold
+  const samples = (count: number): number[] =>
+    [...new Set([...Array.from({ length: count + 1 }, (_, index) => index / count), 0.5])]
+      .sort((left, right) => left - right)
+  const horizontal: ScenePath = {
+    id: 'scaffold:u:0',
+    role: 'strand',
+    points: samples(columns).map((u) => deformCoordinate(recipe, u, 0, morph)),
+    closed: false,
+    netWrap: { u: 1, v: 0 },
+  }
+  const vertical: ScenePath = {
+    id: 'scaffold:v:0',
+    role: 'strand',
+    points: samples(rows).map((v) => deformCoordinate(recipe, 0, v, morph)),
+    closed: false,
+    netWrap: { u: 0, v: 1 },
+  }
+  return [horizontal, vertical]
+}
+
 export function compileRecipe(
   recipe: ConstructionRecipe,
   recipeMorph: number,
 ): CompiledPattern {
   const morph = clamp01(recipeMorph)
-  const graph = buildPeriodicGrid({
-    ...recipe.scaffold,
-    cell: recipe.cell,
-    positionAt: (u, v) => deformCoordinate(recipe, u, v, morph),
-  })
-  const paths = [...strandScenePaths(graph), ...ornamentPaths(recipe, morph)]
+  const sourcePaths = [...scaffoldPaths(recipe, morph), ...ornamentPaths(recipe, morph)]
+  const graph = compilePeriodicArrangement(recipe.cell, sourcePaths)
+  const paths = strandScenePaths(graph)
   return {
     graph,
     scene: { cell: recipe.cell, graph, paths },
@@ -200,4 +227,3 @@ export function compilePattern(
 ): CompiledPattern {
   return compileRecipe(definition.recipe, mapUserMorph(definition.morph, userMorph))
 }
-

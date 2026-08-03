@@ -46,11 +46,13 @@ export const alaeddinEight: PatternDefinition = {
       },
     ],
     links: [
-      { id: 'diameter-a', motifId: 'central-eight', fromPoint: 0, toPoint: 8 },
+      { id: 'diameter-a', continuationId: 'eight-repeat', motifId: 'central-eight', fromPoint: 0, toPoint: 8 },
       { id: 'diameter-b', motifId: 'central-eight', fromPoint: 4, toPoint: 12 },
+      { id: 'left-repeat-contact', continuationId: 'eight-repeat', motifId: 'central-eight', fromPoint: 8, toCell: { u: 0, v: 0.5 } },
+      { id: 'right-repeat-contact', continuationId: 'eight-repeat', motifId: 'central-eight', fromPoint: 0, toCell: { u: 1, v: 0.5 } },
     ],
   },
-  morph: { min: 0.08, max: 0.92, default: 0.46 },
+  morph: { min: 0.3, max: 0.85, default: 0.46 },
   defaults: {
     morph: 0.46,
     material: 0.38,

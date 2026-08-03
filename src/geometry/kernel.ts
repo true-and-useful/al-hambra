@@ -6,6 +6,7 @@ import type {
   PeriodicCycle,
   PeriodicGraph,
   PeriodicHalfEdge,
+  PeriodicStrand,
   PeriodicVertex,
   ScenePath,
   Vec2,
@@ -163,10 +164,13 @@ export function buildPeriodicGrid(scaffold: GridScaffold): PeriodicGraph {
     }
   }
 
-  const strands: PeriodicCycle[] = []
+  const strands: PeriodicStrand[] = []
   for (let row = 0; row < rows; row += 1) {
     strands.push({
       id: `strand:u:${row}`,
+      role: 'strand',
+      pathClosed: false,
+      continuationId: `strand:u:${row}`,
       edges: Array.from({ length: columns }, (_, column) =>
         edgeId(column, row, 'e'),
       ),
@@ -176,6 +180,9 @@ export function buildPeriodicGrid(scaffold: GridScaffold): PeriodicGraph {
   for (let column = 0; column < columns; column += 1) {
     strands.push({
       id: `strand:v:${column}`,
+      role: 'strand',
+      pathClosed: false,
+      continuationId: `strand:v:${column}`,
       edges: Array.from({ length: rows }, (_, row) =>
         edgeId(column, row, 's'),
       ),
@@ -196,10 +203,12 @@ export function buildPeriodicGrid(scaffold: GridScaffold): PeriodicGraph {
     ]
     return {
       id: `crossing:${column}:${row}`,
+      kind: 'intersection' as const,
       vertex: vertex.id,
       armsCCW: [horizontal[0], vertical[0], horizontal[1], vertical[1]] as const,
       continuations: [horizontal, vertical] as const,
       overPair: ((column + row + overUnderPhase) % 2) as 0 | 1,
+      weavePhase: { u: 0 as const, v: 0 as const },
     }
   })
 
@@ -246,9 +255,10 @@ export function unwrapCycle(graph: PeriodicGraph, cycle: PeriodicCycle): Vec2[] 
 export function strandScenePaths(graph: PeriodicGraph): ScenePath[] {
   return graph.strands.map((strand) => ({
     id: strand.id,
-    role: 'strand',
+    role: strand.role,
+    continuationId: strand.continuationId,
     points: unwrapCycle(graph, strand),
-    closed: false,
+    closed: strand.pathClosed,
     netWrap: strand.netWrap,
   }))
 }
@@ -268,8 +278,9 @@ export function topologySignature(graph: PeriodicGraph): string {
     .sort((a, b) => a.id.localeCompare(b.id))
     .map(
       (crossing) =>
-        `${crossing.id}:${crossing.vertex}:${crossing.armsCCW.join(',')}:` +
-        `${crossing.continuations.map((pair) => pair.join('+')).join('|')}:${crossing.overPair}`,
+        `${crossing.id}:${crossing.kind}:${crossing.vertex}:${crossing.armsCCW.join(',')}:` +
+        `${crossing.continuations.map((pair) => pair.join('+')).join('|')}:${crossing.overPair}:` +
+        `${crossing.weavePhase.u},${crossing.weavePhase.v}`,
     )
   return [...edges, ...faces, ...strands, ...crossings].join(';')
 }
@@ -277,7 +288,8 @@ export function topologySignature(graph: PeriodicGraph): string {
 export function graphInvariantErrors(graph: PeriodicGraph): string[] {
   const errors: string[] = []
   const edges = new Map(graph.halfEdges.map((edge) => [edge.id, edge]))
-  const vertices = new Set(graph.vertices.map((vertex) => vertex.id))
+  const vertexById = new Map(graph.vertices.map((vertex) => [vertex.id, vertex]))
+  const vertices = new Set(vertexById.keys())
 
   for (const edge of graph.halfEdges) {
     const twin = edges.get(edge.twin)
@@ -316,6 +328,47 @@ export function graphInvariantErrors(graph: PeriodicGraph): string[] {
     if ((faceUse.get(edge.id) ?? 0) !== 1) errors.push(`${edge.id} must belong to exactly one face`)
   }
 
+  const strandUse = new Map<string, number>()
+  const continuationByArm = new Map<string, string>()
+  for (const strand of graph.strands) {
+    let sum: LatticeOffset = { u: 0, v: 0 }
+    for (let index = 0; index < strand.edges.length; index += 1) {
+      const edge = edges.get(strand.edges[index] ?? '')
+      if (!edge) {
+        errors.push(`${strand.id} contains an unknown edge`)
+        continue
+      }
+      const undirected = [edge.id, edge.twin].sort().join('|')
+      strandUse.set(undirected, (strandUse.get(undirected) ?? 0) + 1)
+      continuationByArm.set(edge.id, strand.continuationId)
+      continuationByArm.set(edge.twin, strand.continuationId)
+      sum = { u: sum.u + edge.wrap.u, v: sum.v + edge.wrap.v }
+      const nextId = strand.edges[index + 1]
+      if (nextId) {
+        const destination = edges.get(edge.twin)?.origin
+        if (destination !== edges.get(nextId)?.origin) {
+          errors.push(`${strand.id} is disconnected between ${edge.id} and ${nextId}`)
+        }
+      }
+    }
+    if (sum.u !== strand.netWrap.u || sum.v !== strand.netWrap.v) {
+      errors.push(`${strand.id} has an incorrect net wrap`)
+    }
+    if ((strand.pathClosed || (strand.role !== 'accent' && (sum.u !== 0 || sum.v !== 0))) && strand.edges.length > 0) {
+      const first = edges.get(strand.edges[0] ?? '')
+      const last = edges.get(strand.edges.at(-1) ?? '')
+      if (first && last && edges.get(last.twin)?.origin !== first.origin) {
+        errors.push(`${strand.id} does not close on the torus`)
+      }
+    }
+  }
+  for (const edge of graph.halfEdges) {
+    const undirected = [edge.id, edge.twin].sort().join('|')
+    if (edge.id < edge.twin && (strandUse.get(undirected) ?? 0) !== 1) {
+      errors.push(`${edge.id} must be traversed by exactly one source strand`)
+    }
+  }
+
   const crossingUse = new Map<string, number>()
   for (const crossing of graph.crossings) {
     const flattened = crossing.continuations.flat()
@@ -327,13 +380,15 @@ export function graphInvariantErrors(graph: PeriodicGraph): string[] {
       const edge = edges.get(arm)
       if (edge?.origin !== crossing.vertex) errors.push(`${crossing.id} has a foreign arm ${arm}`)
     }
-    const crossingVertex = graph.vertices.find((vertex) => vertex.id === crossing.vertex)
-    if (crossingVertex !== undefined) {
+    const crossingVertex = vertexById.get(crossing.vertex)
+    if (crossingVertex !== undefined && crossing.kind === 'intersection') {
       const destinations = crossing.armsCCW.map((arm) => {
         const edge = edges.get(arm)
-        return edge === undefined
+        const twin = edge === undefined ? undefined : edges.get(edge.twin)
+        const destination = twin === undefined ? undefined : vertexById.get(twin.origin)
+        return edge === undefined || destination === undefined
           ? undefined
-          : translateByWrap(destinationOf(graph, edge).position, graph.cell, edge.wrap)
+          : translateByWrap(destination.position, graph.cell, edge.wrap)
       })
       for (let index = 0; index < destinations.length; index += 1) {
         const current = destinations[index]
@@ -352,10 +407,31 @@ export function graphInvariantErrors(graph: PeriodicGraph): string[] {
       errors.push(`${crossing.id} continuations do not cover its arms`)
     }
   }
+  for (const [edgeId, useCount] of crossingUse) {
+    if (useCount !== 1) errors.push(`${edgeId} must be consumed by exactly one crossing`)
+  }
+  const outgoing = new Map<string, string[]>()
   for (const edge of graph.halfEdges) {
-    if ((crossingUse.get(edge.id) ?? 0) !== 1) {
-      errors.push(`${edge.id} must be consumed by exactly one crossing`)
+    const arms = outgoing.get(edge.origin) ?? []
+    arms.push(edge.id)
+    outgoing.set(edge.origin, arms)
+  }
+  for (const crossing of graph.crossings) {
+    if ((outgoing.get(crossing.vertex)?.length ?? 0) !== 4) {
+      errors.push(`${crossing.id} is not a degree-four vertex`)
     }
+  }
+  const crossingVertices = new Set(graph.crossings.map((crossing) => crossing.vertex))
+  for (const [vertex, arms] of outgoing) {
+    if (arms.length !== 4) continue
+    const continuationGroups = new Map<string, number>()
+    for (const arm of arms) {
+      const continuation = continuationByArm.get(arm) ?? `missing:${arm}`
+      continuationGroups.set(continuation, (continuationGroups.get(continuation) ?? 0) + 1)
+    }
+    const pairable = continuationGroups.size === 2 && [...continuationGroups.values()].every((count) => count === 2)
+    if (pairable && !crossingVertices.has(vertex)) errors.push(`${vertex} is missing a crossing record`)
+    if (!pairable) errors.push(`${vertex} cannot be paired into two strand continuations`)
   }
 
   const vertexCount = graph.vertices.length

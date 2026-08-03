@@ -151,7 +151,7 @@ a:focus-visible {
   min-height: 0;
   margin: -64px 0 -104px;
   overflow: hidden;
-  touch-action: manipulation;
+  touch-action: pinch-zoom;
   user-select: none;
   -webkit-user-select: none;
   cursor: ew-resize;
@@ -217,6 +217,10 @@ a:focus-visible {
 
 .instrument[data-touched="true"] .gesture-hint {
   opacity: 0;
+}
+
+.move-active-label {
+  display: none;
 }
 
 .control-region {
@@ -287,7 +291,7 @@ a:focus-visible {
 .material-slider,
 .morph-slider {
   width: 100%;
-  min-height: 34px;
+  min-height: 44px;
   margin: 0;
   accent-color: var(--accent);
   cursor: pointer;
@@ -299,6 +303,11 @@ a:focus-visible {
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
+}
+
+.instrument:has(.morph-slider:focus-visible) .artwork-shell {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
 }
 
 .palette-picker,
@@ -314,17 +323,27 @@ a:focus-visible {
 }
 
 .palette-button {
-  width: 28px;
-  height: 28px;
-  padding: 0;
+  width: 44px;
+  height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.palette-button::before {
+  display: block;
+  width: 26px;
+  height: 26px;
   border: 1px solid rgb(255 255 255 / 0.24);
   border-radius: 50%;
   background: var(--swatch);
   box-shadow: inset 0 0 0 2px rgb(0 0 0 / 0.18);
-  cursor: pointer;
+  content: "";
 }
 
-.palette-button[aria-pressed="true"] {
+.palette-button[aria-pressed="true"]::before {
   border-color: var(--paper);
   box-shadow:
     0 0 0 2px var(--panel),
@@ -402,6 +421,10 @@ a:focus-visible {
 
 .more-menu button:hover {
   background: rgb(255 255 255 / 0.07);
+}
+
+.mobile-palette-menu {
+  display: none;
 }
 
 .status-toast {
@@ -508,6 +531,23 @@ a:focus-visible {
     display: none;
   }
 
+  .mobile-palette-menu {
+    display: grid;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 5px;
+  }
+
+  .mobile-palette-menu button[aria-pressed="true"] {
+    color: var(--focus);
+    background: rgb(255 255 255 / 0.07);
+  }
+
+  .more-menu button[data-action="move"][aria-pressed="true"] {
+    color: var(--focus);
+    background: rgb(255 255 255 / 0.07);
+  }
+
   .toolbar {
     grid-column: 2;
     grid-row: 2;
@@ -515,6 +555,22 @@ a:focus-visible {
 
   .toolbar .secondary-action {
     display: none;
+  }
+
+  .more-button[data-move-active="true"] {
+    width: auto;
+    min-width: 58px;
+    padding-inline: 10px;
+    color: var(--focus);
+    border-color: var(--focus);
+  }
+
+  .more-button[data-move-active="true"] .more-default {
+    display: none;
+  }
+
+  .more-button[data-move-active="true"] .move-active-label {
+    display: inline;
   }
 }
 

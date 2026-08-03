@@ -5,10 +5,10 @@ export const darbIImamTen: PatternDefinition = {
   name: 'Darb-i Imam Ten',
   description: 'A corrected ten-point construction on a centered rectangular cmm repeat.',
   reference: {
-    relationship: 'based on',
+    relationship: 'inspired by',
     title: 'IRA0911 — TilingSearch',
     href: 'https://tilingsearch.mit.edu/HTML/data189/IRA0911.html',
-    note: 'The periodic Darb-i Imam field pattern, not the monument’s quasiperiodic spandrel.',
+    note: 'A responsive study inspired by the periodic field, not an exact reconstruction or the monument’s quasiperiodic spandrel.',
   },
   recipe: {
     cell: {
@@ -74,9 +74,11 @@ export const darbIImamTen: PatternDefinition = {
       { id: 'left-chord-b', motifId: 'left-ten', fromPoint: 11, toPoint: 19 },
       { id: 'right-chord-a', motifId: 'right-ten', fromPoint: 1, toPoint: 9 },
       { id: 'right-chord-b', motifId: 'right-ten', fromPoint: 11, toPoint: 19 },
+      { id: 'left-repeat-contact', continuationId: 'tenfold-repeat', motifId: 'left-ten', fromPoint: 10, toCell: { u: 0, v: 0.5 } },
+      { id: 'right-repeat-contact', continuationId: 'tenfold-repeat', motifId: 'right-ten', fromPoint: 0, toCell: { u: 1, v: 0.5 } },
     ],
   },
-  morph: { min: 0.12, max: 0.88, default: 0.52 },
+  morph: { min: 0.34, max: 0.54, default: 0.52 },
   defaults: {
     morph: 0.52,
     material: 0.64,

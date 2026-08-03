@@ -47,12 +47,13 @@ export const kharraqanTwelve: PatternDefinition = {
       },
     ],
     links: [
-      { id: 'axis-a', motifId: 'central-twelve', fromPoint: 0, toPoint: 12 },
+      { id: 'axis-a', continuationId: 'twelve-repeat', motifId: 'central-twelve', fromPoint: 0, toPoint: 12 },
       { id: 'axis-b', motifId: 'central-twelve', fromPoint: 4, toPoint: 16 },
-      { id: 'axis-c', motifId: 'central-twelve', fromPoint: 8, toPoint: 20 },
+      { id: 'left-repeat-contact', continuationId: 'twelve-repeat', motifId: 'central-twelve', fromPoint: 12, toCell: { u: 0, v: 0.5 } },
+      { id: 'right-repeat-contact', continuationId: 'twelve-repeat', motifId: 'central-twelve', fromPoint: 0, toCell: { u: 1, v: 0.5 } },
     ],
   },
-  morph: { min: 0.1, max: 0.9, default: 0.5 },
+  morph: { min: 0.26, max: 0.36, default: 0.5 },
   defaults: {
     morph: 0.5,
     material: 0.48,

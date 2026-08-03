@@ -1,11 +1,11 @@
 import './style.css'
 
-import { downloadBlob, fitRasterDimensions, rasterizeSvgToPng, serializeStandaloneSvg } from './export'
+import { buildStandaloneSvgDocument, downloadBlob, fitRasterDimensions, rasterizeSvgToPng } from './export'
 import { compilePattern } from './geometry/recipe'
 import { GestureController, zoomViewAroundPoint } from './interaction'
 import { paletteById } from './palettes'
 import { defaultPattern, patternById, patterns } from './patterns/registry'
-import { RENDER_VIEWBOX, renderScene } from './render'
+import { RENDER_VIEWBOX, renderScene, renderSceneMarkup } from './render'
 import {
   AppStateStore,
   decodeStateHash,
@@ -88,11 +88,17 @@ app.innerHTML = `
           <button class="tool-button secondary-action move-button" type="button" aria-pressed="false" aria-label="Move view" title="Move view">✥</button>
           <button class="tool-button secondary-action zoom-out-button" type="button" aria-label="Zoom out" title="Zoom out">−</button>
           <button class="tool-button secondary-action zoom-in-button" type="button" aria-label="Zoom in" title="Zoom in">+</button>
-          <button class="tool-button more-button" type="button" aria-label="More actions" aria-expanded="false" title="More actions">•••</button>
+          <button class="tool-button more-button" type="button" aria-label="More actions" aria-expanded="false" title="More actions">
+            <span class="more-default" aria-hidden="true">•••</span>
+            <span class="move-active-label" aria-hidden="true">Move</span>
+          </button>
           <button class="primary-button copy-button" type="button"><span class="tool-label-wide">Copy </span>link</button>
         </div>
 
         <div class="more-menu" hidden>
+          <div class="mobile-palette-menu" role="group" aria-label="Palette choices"></div>
+          <button type="button" data-action="undo">Undo</button>
+          <button type="button" data-action="move">Move view</button>
           <button type="button" data-action="save-svg">Save SVG</button>
           <button type="button" data-action="save-png">Save PNG</button>
           <button type="button" data-action="reset">Reset design</button>
@@ -125,8 +131,11 @@ const zoomOutButton = requireElement<HTMLButtonElement>('.zoom-out-button')
 const zoomInButton = requireElement<HTMLButtonElement>('.zoom-in-button')
 const moreButton = requireElement<HTMLButtonElement>('.more-button')
 const moreMenu = requireElement<HTMLElement>('.more-menu')
+const mobilePaletteMenu = requireElement<HTMLElement>('.mobile-palette-menu')
+const mobileMoveButton = requireElement<HTMLButtonElement>('.more-menu button[data-action="move"]')
 const copyButton = requireElement<HTMLButtonElement>('.copy-button')
 const toast = requireElement<HTMLElement>('.status-toast')
+const gestureHint = requireElement<HTMLElement>('.gesture-hint')
 
 let moveMode = false
 let spacePressed = false
@@ -134,6 +143,8 @@ let renderFrame = 0
 let toastTimer = 0
 let wheelCommitTimer = 0
 let renderedPaletteSet = ''
+let renderedPaletteSelection = ''
+let renderedAccent = ''
 const capturedPointers = new Set<number>()
 
 function requireElement<T extends Element>(selector: string): T {
@@ -164,6 +175,7 @@ function materialLabel(value: number): string {
 function updatePaletteButtons(): void {
   const pattern = currentPattern()
   const paletteSet = pattern.palettes.join('|')
+  if (renderedPaletteSet === paletteSet && renderedPaletteSelection === store.state.paletteId) return
   if (renderedPaletteSet !== paletteSet) {
     renderedPaletteSet = paletteSet
     palettePicker.replaceChildren(...pattern.palettes.map((paletteId) => {
@@ -180,24 +192,41 @@ function updatePaletteButtons(): void {
       })
       return button
     }))
+    mobilePaletteMenu.replaceChildren(...pattern.palettes.map((paletteId) => {
+      const palette = paletteById(paletteId)
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.dataset.action = 'palette'
+      button.dataset.paletteId = paletteId
+      button.textContent = `Palette: ${palette.name}`
+      return button
+    }))
   }
+  renderedPaletteSelection = store.state.paletteId
   for (const button of palettePicker.querySelectorAll<HTMLButtonElement>('.palette-button')) {
+    button.setAttribute('aria-pressed', String(button.dataset.paletteId === store.state.paletteId))
+  }
+  for (const button of mobilePaletteMenu.querySelectorAll<HTMLButtonElement>('button')) {
     button.setAttribute('aria-pressed', String(button.dataset.paletteId === store.state.paletteId))
   }
 }
 
 function updateControls(state: AppStateV1): void {
   const pattern = currentPattern()
-  designSelect.value = pattern.id
-  morphSlider.value = String(state.morph)
-  materialSlider.value = String(state.material)
-  materialValue.textContent = materialLabel(state.material)
-  sourceLink.href = pattern.reference.href
-  sourceLink.textContent = `${pattern.reference.relationship} ${pattern.reference.title}`
-  sourceLink.title = pattern.reference.note
-  undoButton.disabled = !store.canUndo
-  moveButton.setAttribute('aria-pressed', String(moveMode))
-  artwork.dataset.mode = moveMode ? 'move' : 'morph'
+  const morph = String(state.morph)
+  const material = String(state.material)
+  const label = materialLabel(state.material)
+  if (designSelect.value !== pattern.id) designSelect.value = pattern.id
+  if (morphSlider.value !== morph) morphSlider.value = morph
+  if (materialSlider.value !== material) materialSlider.value = material
+  if (materialValue.textContent !== label) materialValue.textContent = label
+  if (sourceLink.dataset.pattern !== pattern.id) {
+    sourceLink.dataset.pattern = pattern.id
+    sourceLink.href = pattern.reference.href
+    sourceLink.textContent = `${pattern.reference.relationship} ${pattern.reference.title}`
+    sourceLink.title = pattern.reference.note
+  }
+  if (undoButton.disabled === store.canUndo) undoButton.disabled = !store.canUndo
   updatePaletteButtons()
 }
 
@@ -207,7 +236,11 @@ function paint(state: AppStateV1): void {
   const compiled = compilePattern(pattern, state.morph)
   renderScene(svg, compiled.scene, state, paletteById(state.paletteId))
   updateControls(state)
-  document.documentElement.style.setProperty('--accent', paletteById(state.paletteId).accent)
+  const accent = paletteById(state.paletteId).accent
+  if (renderedAccent !== accent) {
+    renderedAccent = accent
+    document.documentElement.style.setProperty('--accent', accent)
+  }
   if (!document.body.dataset.patternReady) {
     document.body.dataset.patternReady = 'true'
     performance.mark('pattern-ready')
@@ -257,7 +290,11 @@ morphSlider.addEventListener('change', () => store.commitPreview())
 function setMoveMode(enabled: boolean): void {
   moveMode = enabled
   moveButton.setAttribute('aria-pressed', String(enabled))
+  mobileMoveButton.setAttribute('aria-pressed', String(enabled))
+  moreButton.dataset.moveActive = String(enabled)
+  moreButton.setAttribute('aria-label', enabled ? 'More actions, move view active' : 'More actions')
   artwork.dataset.mode = enabled ? 'move' : 'morph'
+  gestureHint.textContent = enabled ? 'Drag to move view' : 'Drag to reshape'
 }
 
 moveButton.addEventListener('click', () => setMoveMode(!moveMode))
@@ -279,12 +316,18 @@ moreButton.addEventListener('click', () => {
   const opening = moreMenu.hidden
   moreMenu.hidden = !opening
   moreButton.setAttribute('aria-expanded', String(opening))
-  if (opening) moreMenu.querySelector<HTMLButtonElement>('button')?.focus()
+  if (opening) {
+    [...moreMenu.querySelectorAll<HTMLButtonElement>('button')]
+      .find((button) => button.getClientRects().length > 0)
+      ?.focus()
+  }
 })
 
-function closeMoreMenu(): void {
+function closeMoreMenu(restoreFocus = false): void {
+  const wasOpen = !moreMenu.hidden
   moreMenu.hidden = true
   moreButton.setAttribute('aria-expanded', 'false')
+  if (restoreFocus && wasOpen) moreButton.focus()
 }
 
 async function copyLivingLink(): Promise<void> {
@@ -302,7 +345,9 @@ copyButton.addEventListener('click', () => void copyLivingLink())
 
 function standaloneSvg(): string {
   const pattern = currentPattern()
-  return serializeStandaloneSvg(svg, {
+  const compiled = compilePattern(pattern, store.state.morph)
+  const body = renderSceneMarkup(compiled.scene, store.state, paletteById(store.state.paletteId))
+  return buildStandaloneSvgDocument(body, {
     width: RENDER_VIEWBOX.width,
     height: RENDER_VIEWBOX.height,
     viewBox: `0 0 ${RENDER_VIEWBOX.width} ${RENDER_VIEWBOX.height}`,
@@ -337,8 +382,15 @@ async function savePng(): Promise<void> {
 moreMenu.addEventListener('click', (event) => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]')
   if (!button) return
-  closeMoreMenu()
+  closeMoreMenu(true)
   switch (button.dataset.action) {
+    case 'palette': {
+      const paletteId = button.dataset.paletteId
+      if (paletteId) store.commit({ ...store.state, paletteId })
+      break
+    }
+    case 'undo': store.undo(); break
+    case 'move': setMoveMode(!moveMode); break
     case 'save-svg': saveSvg(); break
     case 'save-png': void savePng(); break
     case 'reset': store.reset(); showToast('Design reset'); break
@@ -418,7 +470,7 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault()
     store.undo()
   } else if (event.key === 'Escape') {
-    closeMoreMenu()
+    closeMoreMenu(true)
     setMoveMode(false)
   } else if ((event.key === '+' || event.key === '=') && event.target === document.body) {
     zoomBy(1.22)
@@ -432,5 +484,12 @@ document.addEventListener('keyup', (event) => {
 })
 
 window.addEventListener('hashchange', () => store.replace(decodeStateHash(window.location.hash, catalog)))
+
+morphSlider.addEventListener('focus', () => {
+  gestureHint.textContent = 'Use arrow keys to reshape'
+})
+morphSlider.addEventListener('blur', () => {
+  gestureHint.textContent = moveMode ? 'Drag to move view' : 'Drag to reshape'
+})
 
 paint(store.state)

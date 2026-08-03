@@ -1,6 +1,6 @@
 # Islamic Pattern Instrument v1
 
-**Status:** Implemented locally on 2026-08-02; automated verification is green. Physical iOS/Android feel and final provenance-fidelity review remain human gates.
+**Status:** Implemented locally on 2026-08-02. Unit, export-parity, and emulated desktop/mobile browser verification are green; physical iOS/Android feel, fixed-profile production timing, and final provenance review remain release gates.
 
 **Target repository:** `/Users/davidwilson/code/islamic-patterns` → `true-and-useful/islamic-patterns` (working name; verify availability before creation)
 

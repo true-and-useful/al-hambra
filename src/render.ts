@@ -1,4 +1,5 @@
 import type { AppStateV1 } from './state'
+import { translateByWrap } from './geometry/kernel'
 import type {
   Crossing,
   PeriodicGraph,
@@ -13,10 +14,17 @@ export const RENDER_VIEWBOX = Object.freeze({ width: 1200, height: 800 })
 type TileMetrics = Readonly<{
   width: number
   height: number
-  rows: number
+  oblique: boolean
 }>
 
+type TileTranslation = Readonly<Vec2 & { u: number; v: number }>
+
 const number = (value: number): string => Number(value.toFixed(3)).toString()
+
+function smoothstep(from: number, to: number, value: number): number {
+  const t = Math.min(1, Math.max(0, (value - from) / (to - from)))
+  return t * t * (3 - 2 * t)
+}
 
 function pathData(path: ScenePath, dx = 0, dy = 0): string {
   const points = path.points
@@ -34,20 +42,31 @@ function pathData(path: ScenePath, dx = 0, dy = 0): string {
 function tileMetrics(scene: RenderScene): TileMetrics {
   const { a, b } = scene.cell
   const oblique = Math.abs(b.x) > 0.001
+  const phaseU = scene.graph.crossings.some((crossing) => crossing.weavePhase.u === 1)
+  const horizontalScale = phaseU ? 2 : 1
+  const verticalScale = oblique
+    ? (phaseU ? 2 : 1)
+    : (scene.graph.crossings.some((crossing) => crossing.weavePhase.v === 1) ? 2 : 1)
   return {
-    width: Math.abs(a.x),
-    height: Math.abs(b.y) * (oblique ? 2 : 1),
-    rows: oblique ? 2 : 1,
+    width: Math.abs(a.x) * horizontalScale,
+    height: Math.abs(b.y) * (oblique ? 2 : 1) * verticalScale,
+    oblique,
   }
 }
 
-function latticeTranslations(scene: RenderScene, rows: number): Vec2[] {
+function latticeTranslations(scene: RenderScene, metrics: TileMetrics): TileTranslation[] {
   const { a, b } = scene.cell
-  if (rows === 1) return [{ x: 0, y: 0 }]
-  const translations: Vec2[] = []
-  for (let v = 0; v < rows; v += 1) {
-    for (let u = -1; u <= 0; u += 1) {
-      translations.push({ x: u * a.x + v * b.x, y: u * a.y + v * b.y })
+  const uCells = Math.round(metrics.width / Math.abs(a.x))
+  const vCells = Math.round(metrics.height / Math.abs(b.y))
+  const translations: TileTranslation[] = []
+  for (let v = 0; v < vCells; v += 1) {
+    const shiftX = v * b.x
+    const minimumU = metrics.oblique ? Math.floor(-shiftX / a.x) : 0
+    const maximumU = metrics.oblique
+      ? Math.ceil((metrics.width - shiftX) / a.x) - 1
+      : uCells - 1
+    for (let u = minimumU; u <= maximumU; u += 1) {
+      translations.push({ x: u * a.x + v * b.x, y: u * a.y + v * b.y, u, v })
     }
   }
   return translations
@@ -60,38 +79,37 @@ function strokeMarkup(
   role: ScenePath['role'],
 ): string {
   if (!d) return ''
-  const lineWidth = 2.2 + material * 15
-  const bandWidth = 2.8 + material * 24
+  const bandWidth = 2.2 + material * 24.6
   const roleScale = role === 'strand' ? 0.42 : role === 'accent' ? 0.3 : 1
-  const width = (material < 0.18 ? lineWidth : bandWidth) * roleScale
+  const width = bandWidth * roleScale
   const color = role === 'accent' ? palette.accent : palette.strand
   const opacity = role === 'strand' ? 0.2 + material * 0.12 : role === 'accent' ? 0.82 : 0.96
   const common = `d="${d}" fill="none" stroke-linecap="square" stroke-linejoin="miter"`
-
-  if (material < 0.18) {
-    return `<path ${common} stroke="${color}" stroke-width="${number(width)}" opacity="${number(opacity)}"/>`
-  }
-
-  const edgeWidth = width + (role === 'ornament' ? 4 + material * 3 : 2)
+  const materialized = smoothstep(0.08, 0.34, material)
+  const edgeWidth = width + materialized * (role === 'ornament' ? 4 + material * 3 : 2)
   const highlightWidth = Math.max(0.8, width * 0.1)
   return [
-    `<path ${common} stroke="${palette.edge}" stroke-width="${number(edgeWidth)}" opacity="${number(opacity)}"/>`,
+    `<path ${common} stroke="${palette.edge}" stroke-width="${number(edgeWidth)}" opacity="${number(opacity * materialized)}"/>`,
     `<path ${common} stroke="${color}" stroke-width="${number(width)}" opacity="${number(opacity)}"/>`,
-    `<path ${common} stroke="${palette.highlight}" stroke-width="${number(highlightWidth)}" opacity="${number(0.08 + material * 0.16)}"/>`,
+    `<path ${common} stroke="${palette.highlight}" stroke-width="${number(highlightWidth)}" opacity="${number(materialized * (0.08 + material * 0.16))}"/>`,
   ].join('')
 }
 
 function crossingDirection(
   graph: PeriodicGraph,
   crossing: Crossing,
+  vertices: ReadonlyMap<string, PeriodicGraph['vertices'][number]>,
+  edges: ReadonlyMap<string, PeriodicGraph['halfEdges'][number]>,
+  overPair: 0 | 1,
 ): Readonly<{ start: Vec2; end: Vec2 }> | undefined {
-  const vertices = new Map(graph.vertices.map((vertex) => [vertex.id, vertex]))
-  const edges = new Map(graph.halfEdges.map((edge) => [edge.id, edge]))
-  const pair = crossing.continuations[crossing.overPair]
+  const pair = crossing.continuations[overPair]
   const edge = edges.get(pair[0])
   const twin = edge ? edges.get(edge.twin) : undefined
   const center = vertices.get(crossing.vertex)?.position
-  const toward = twin ? vertices.get(twin.origin)?.position : undefined
+  const destination = twin ? vertices.get(twin.origin) : undefined
+  const toward = destination && edge
+    ? translateByWrap(destination.position, graph.cell, edge.wrap)
+    : undefined
   if (!center || !toward) return undefined
   const dx = toward.x - center.x
   const dy = toward.y - center.y
@@ -110,37 +128,53 @@ function crossingMarkup(
   scene: RenderScene,
   palette: Palette,
   material: number,
-  translation: Vec2,
+  translation: TileTranslation,
 ): string {
-  if (material < 0.18) return ''
-  const bandWidth = (2.8 + material * 24) * 0.42
-  const edgeWidth = bandWidth + 2
+  const materialized = smoothstep(0.08, 0.34, material)
+  if (materialized === 0) return ''
+  const edges = new Map(scene.graph.halfEdges.map((edge) => [edge.id, edge]))
+  const vertices = new Map(scene.graph.vertices.map((vertex) => [vertex.id, vertex]))
+  const roleByArm = new Map<string, ScenePath['role']>()
+  for (const strand of scene.graph.strands) {
+    for (const edgeId of strand.edges) {
+      roleByArm.set(edgeId, strand.role)
+      const twin = edges.get(edgeId)?.twin
+      if (twin) roleByArm.set(twin, strand.role)
+    }
+  }
   return scene.graph.crossings.map((crossing) => {
-    const segment = crossingDirection(scene.graph, crossing)
+    if (crossing.kind === 'contact') return ''
+    const phase = Math.abs(
+      crossing.weavePhase.u * translation.u + crossing.weavePhase.v * translation.v,
+    ) % 2
+    const overPair = (crossing.overPair ^ phase) as 0 | 1
+    const segment = crossingDirection(scene.graph, crossing, vertices, edges, overPair)
     if (!segment) return ''
+    const overArms = new Set(crossing.continuations[overPair])
+    const role = roleByArm.get([...overArms][0] ?? '') ?? 'strand'
+    const roleScale = role === 'strand' ? 0.42 : role === 'accent' ? 0.3 : 1
+    const bandWidth = (2.2 + material * 24.6) * roleScale
+    const edgeWidth = bandWidth + materialized * (role === 'ornament' ? 4 + material * 3 : 2)
+    const color = role === 'accent' ? palette.accent : palette.strand
+    const opacity = role === 'strand' ? 0.2 + material * 0.12 : role === 'accent' ? 0.82 : 0.96
     const x1 = segment.start.x + translation.x
     const y1 = segment.start.y + translation.y
     const x2 = segment.end.x + translation.x
     const y2 = segment.end.y + translation.y
     const coords = `x1="${number(x1)}" y1="${number(y1)}" x2="${number(x2)}" y2="${number(y2)}" stroke-linecap="square"`
     return [
-      `<line ${coords} stroke="${palette.background}" stroke-width="${number(edgeWidth + 7)}" opacity="0.32"/>`,
-      `<line ${coords} stroke="${palette.edge}" stroke-width="${number(edgeWidth)}" opacity="0.32"/>`,
-      `<line ${coords} stroke="${palette.strand}" stroke-width="${number(bandWidth)}" opacity="0.32"/>`,
+      `<line ${coords} stroke="${palette.background}" stroke-width="${number(edgeWidth + 7)}" opacity="${number(materialized)}"/>`,
+      `<line ${coords} stroke="${palette.edge}" stroke-width="${number(edgeWidth)}" opacity="${number(opacity * materialized)}"/>`,
+      `<line ${coords} stroke="${color}" stroke-width="${number(bandWidth)}" opacity="${number(opacity * materialized)}"/>`,
     ].join('')
   }).join('')
 }
 
 function patternContent(scene: RenderScene, palette: Palette, material: number): string {
   const metrics = tileMetrics(scene)
-  const translations = latticeTranslations(scene, metrics.rows)
+  const translations = latticeTranslations(scene, metrics)
   const paths = translations.map((translation) =>
-    scene.paths.map((path) => strokeMarkup(
-      pathData(path, translation.x, translation.y),
-      palette,
-      material,
-      path.role,
-    )).join(''),
+    `<use href="#pattern-cell-paths" transform="translate(${number(translation.x)} ${number(translation.y)})"/>`,
   ).join('')
   const crossings = translations.map((translation) =>
     crossingMarkup(scene, palette, material, translation),
@@ -165,8 +199,15 @@ export function renderSceneMarkup(
     RENDER_VIEWBOX.height / 2 - cellCenter.y * state.view.scale +
     (0.5 - state.view.cy) * metrics.height * state.view.scale
   const transform = `translate(${number(offsetX)} ${number(offsetY)}) scale(${number(state.view.scale)})`
+  const cellPaths = scene.paths.map((path) => strokeMarkup(
+    pathData(path),
+    palette,
+    state.material,
+    path.role,
+  )).join('')
   return [
     '<defs>',
+    `<g id="pattern-cell-paths">${cellPaths}</g>`,
     `<pattern id="ornament" patternUnits="userSpaceOnUse" width="${number(metrics.width)}" height="${number(metrics.height)}" patternTransform="${transform}">`,
     `<rect x="0" y="0" width="${number(metrics.width)}" height="${number(metrics.height)}" fill="${palette.background}"/>`,
     patternContent(scene, palette, state.material),
