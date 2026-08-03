@@ -1,0 +1,30 @@
+{
+  "patternId": "octagon-eight",
+  "name": "Eightfold Court",
+  "scaffold": "octagon-square",
+  "contactAngleDegrees": {
+    "min": 46,
+    "max": 86,
+    "atDefault": 68
+  },
+  "sampleCount": 512,
+  "topology": {
+    "distinctSignatures": 1,
+    "signatureDigest": "ea9a3caf6e6ef87c424f3dbe9c060491d57348e58f1be20bd65ef4b2d9af15c3",
+    "signatureLength": 9887
+  },
+  "tolerance": {
+    "note": "Distance thresholds are fractions of the scaffold edge length.",
+    "scaffoldEdgeLength": 231.95959492893323,
+    "minimumEdgeLengthFraction": 0.01,
+    "warningClearanceFraction": 0.02,
+    "parameterPrecision": 0.0000152587890625,
+    "exclusionMargin": 0.005
+  },
+  "minimumObservedClearance": 15.12316843800378,
+  "minimumObservedEdgeLength": 82.02259370607345,
+  "suspectIntervals": [],
+  "excludedRanges": [],
+  "invariantErrors": [],
+  "valid": true
+}

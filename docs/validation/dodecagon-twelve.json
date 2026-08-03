@@ -1,0 +1,30 @@
+{
+  "patternId": "dodecagon-twelve",
+  "name": "Twelvefold Vault",
+  "scaffold": "dodecagon-hexagon-square",
+  "contactAngleDegrees": {
+    "min": 61,
+    "max": 84,
+    "atDefault": 72.5
+  },
+  "sampleCount": 512,
+  "topology": {
+    "distinctSignatures": 1,
+    "signatureDigest": "bb4d8c56ca8f39c8048b47d3334de6e3a1da7d607419ba02652279a840a5c538",
+    "signatureLength": 31839
+  },
+  "tolerance": {
+    "note": "Distance thresholds are fractions of the scaffold edge length.",
+    "scaffoldEdgeLength": 118.3419246269048,
+    "minimumEdgeLengthFraction": 0.01,
+    "warningClearanceFraction": 0.02,
+    "parameterPrecision": 0.0000152587890625,
+    "exclusionMargin": 0.005
+  },
+  "minimumObservedClearance": 11.193604301419436,
+  "minimumObservedEdgeLength": 43.526324702176034,
+  "suspectIntervals": [],
+  "excludedRanges": [],
+  "invariantErrors": [],
+  "valid": true
+}

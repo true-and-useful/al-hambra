@@ -1,0 +1,30 @@
+{
+  "patternId": "decagon-ten",
+  "name": "Tenfold Rose",
+  "scaffold": "decagon-rhombus",
+  "contactAngleDegrees": {
+    "min": 57,
+    "max": 70,
+    "atDefault": 63.5
+  },
+  "sampleCount": 512,
+  "topology": {
+    "distinctSignatures": 1,
+    "signatureDigest": "455acad43ea9ab01b09a8d8b6e7ad24f1fbf2e61e7bc5bb78e90201149c5669c",
+    "signatureLength": 21623
+  },
+  "tolerance": {
+    "note": "Distance thresholds are fractions of the scaffold edge length.",
+    "scaffoldEdgeLength": 181.9550298904275,
+    "minimumEdgeLengthFraction": 0.01,
+    "warningClearanceFraction": 0.02,
+    "parameterPrecision": 0.0000152587890625,
+    "exclusionMargin": 0.005
+  },
+  "minimumObservedClearance": 7.65965159587832,
+  "minimumObservedEdgeLength": 53.548628108777464,
+  "suspectIntervals": [],
+  "excludedRanges": [],
+  "invariantErrors": [],
+  "valid": true
+}
