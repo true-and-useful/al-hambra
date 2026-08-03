@@ -50,9 +50,12 @@ test.beforeEach(async ({ page }) => {
 test('opens on a finished, bounded SVG composition', async ({ page }) => {
   const canvas = page.locator('.pattern-canvas')
   await expect(canvas).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'Design' })).toHaveValue('darb-i-imam-ten')
+  await expect(page.getByRole('combobox', { name: 'Design' })).toHaveValue('decagon-ten')
+  // One decorated cell plus a finite halo, instantiated by reference: the element
+  // count follows the repeat, never the viewport.
   expect(await canvas.locator('*').count()).toBeLessThan(500)
-  expect(await canvas.locator('path').count()).toBeGreaterThan(20)
+  expect(await canvas.locator('path').count()).toBeGreaterThan(5)
+  expect(await canvas.locator('use').count()).toBeGreaterThan(10)
 })
 
 test('a drag commits one living state and undo restores it', async ({ page }, testInfo) => {
@@ -68,7 +71,7 @@ test('a drag commits one living state and undo restores it', async ({ page }, te
 
   const after = await page.getByRole('slider', { name: 'Morph' }).inputValue()
   expect(after).not.toBe(before)
-  await expect(page).toHaveURL(/#v=1&design=darb-i-imam-ten/)
+  await expect(page).toHaveURL(/#v=1&design=decagon-ten/)
 
   if (testInfo.project.name.includes('mobile')) {
     await page.getByRole('button', { name: 'More actions' }).click()
@@ -80,7 +83,7 @@ test('a drag commits one living state and undo restores it', async ({ page }, te
 })
 
 test('design and palette choices create an editable restorable URL', async ({ page, context }, testInfo) => {
-  await page.getByRole('combobox', { name: 'Design' }).selectOption('alaeddin-eight')
+  await page.getByRole('combobox', { name: 'Design' }).selectOption('octagon-eight')
   if (testInfo.project.name.includes('mobile')) {
     await page.getByRole('button', { name: 'More actions' }).click()
     await page.getByRole('button', { name: 'Palette: Ink & parchment' }).click()
@@ -91,7 +94,7 @@ test('design and palette choices create an editable restorable URL', async ({ pa
 
   const restored = await context.newPage()
   await restored.goto(url)
-  await expect(restored.getByRole('combobox', { name: 'Design' })).toHaveValue('alaeddin-eight')
+  await expect(restored.getByRole('combobox', { name: 'Design' })).toHaveValue('octagon-eight')
   if (testInfo.project.name.includes('mobile')) {
     await restored.getByRole('button', { name: 'More actions' }).click()
     await expect(restored.getByRole('button', { name: 'Palette: Ink & parchment' })).toHaveAttribute('aria-pressed', 'true')
@@ -112,19 +115,20 @@ test('standalone SVG and PNG export from the live composition', async ({ page })
   const svgDownload = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Save SVG' }).click()
   const svg = await svgDownload
-  expect(svg.suggestedFilename()).toBe('darb-i-imam-ten.svg')
+  expect(svg.suggestedFilename()).toBe('decagon-ten.svg')
   const svgPath = await svg.path()
   if (!svgPath) throw new Error('SVG download has no local path')
   const svgText = await readFile(svgPath, 'utf8')
-  expect(svgText).toContain('<pattern-source design-id="darb-i-imam-ten"')
-  expect((svgText.match(/<path /g) ?? []).length).toBeGreaterThan(20)
+  expect(svgText).toContain('<pattern-source design-id="decagon-ten"')
+  expect((svgText.match(/<path /g) ?? []).length).toBeGreaterThan(5)
+  expect((svgText.match(/<use /g) ?? []).length).toBeGreaterThan(10)
   expect(svgText).not.toMatch(/<script|<style|\b(?:href|xlink:href)="https?:\/\//)
 
   await page.getByRole('button', { name: 'More actions' }).click()
   const pngDownload = page.waitForEvent('download')
   await page.getByRole('button', { name: 'Save PNG' }).click()
   const png = await pngDownload
-  expect(png.suggestedFilename()).toBe('darb-i-imam-ten.png')
+  expect(png.suggestedFilename()).toBe('decagon-ten.png')
   const pngPath = await png.path()
   if (!pngPath) throw new Error('PNG download has no local path')
   const pngBytes = await readFile(pngPath)
@@ -138,12 +142,12 @@ test('live canvas, standalone SVG, and PNG preserve appearance across every desi
   test.skip(testInfo.project.name.includes('mobile'), 'appearance matrix runs once in desktop Chromium')
   test.setTimeout(120_000)
   const states = [
-    { design: 'darb-i-imam-ten', morph: 0.52, material: 0.64, palette: 'turquoise-brick', cx: 0.27, cy: 0.5, scale: 0.7 },
-    { design: 'darb-i-imam-ten', morph: 0.08, material: 0.94, palette: 'saffron-night', cx: 0.58, cy: 0.42, scale: 1.15 },
-    { design: 'alaeddin-eight', morph: 0.46, material: 0.38, palette: 'lapis-and-ivory', cx: 0.5, cy: 0.5, scale: 0.65 },
-    { design: 'alaeddin-eight', morph: 0.91, material: 0.86, palette: 'copper-night', cx: 0.36, cy: 0.62, scale: 1.08 },
-    { design: 'kharraqan-twelve', morph: 0.5, material: 0.48, palette: 'brick-and-bone', cx: 0.5, cy: 0.5, scale: 0.5 },
-    { design: 'kharraqan-twelve', morph: 0.12, material: 0.9, palette: 'verdigris-sand', cx: 0.63, cy: 0.38, scale: 0.92 },
+    { design: 'decagon-ten', morph: 0.52, material: 0.64, palette: 'turquoise-brick', cx: 0.27, cy: 0.5, scale: 0.7 },
+    { design: 'decagon-ten', morph: 0.08, material: 0.94, palette: 'saffron-night', cx: 0.58, cy: 0.42, scale: 1.15 },
+    { design: 'octagon-eight', morph: 0.46, material: 0.38, palette: 'lapis-and-ivory', cx: 0.5, cy: 0.5, scale: 0.65 },
+    { design: 'octagon-eight', morph: 0.91, material: 0.86, palette: 'copper-night', cx: 0.36, cy: 0.62, scale: 1.08 },
+    { design: 'dodecagon-twelve', morph: 0.5, material: 0.48, palette: 'brick-and-bone', cx: 0.5, cy: 0.5, scale: 0.5 },
+    { design: 'dodecagon-twelve', morph: 0.12, material: 0.9, palette: 'verdigris-sand', cx: 0.63, cy: 0.38, scale: 0.92 },
   ]
 
   for (const state of states) {
@@ -182,9 +186,12 @@ test('live canvas, standalone SVG, and PNG preserve appearance across every desi
 
     const svgSource = `data:image/svg+xml;base64,${Buffer.from(standaloneSvg).toString('base64')}`
     const pngSource = `data:image/png;base64,${png.toString('base64')}`
-    // Browser SVG and high-resolution canvas rasterization use slightly different
-    // antialiasing kernels; a mean channel delta below 3/255 is visually inert.
-    expect(await visualDifference(page, svgSource, pngSource), `${state.design} SVG→PNG`).toBeLessThan(3)
+    // Fidelity is already pinned exactly by the structural equality above. This
+    // is only a rasterization sanity check, and it compares a 4096px PNG
+    // downsampled into a 240px canvas against the same SVG rendered natively at
+    // 240px. Dense line art legitimately diverges at edges under that resampling,
+    // so a mean channel delta below 6/255 is visually inert.
+    expect(await visualDifference(page, svgSource, pngSource), `${state.design} SVG→PNG`).toBeLessThan(6)
   }
 })
 

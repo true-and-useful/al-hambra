@@ -2,6 +2,18 @@
 
 **Status:** Implemented locally on 2026-08-02. Unit, export-parity, and emulated desktop/mobile browser verification are green; physical iOS/Android feel, fixed-profile production timing, and final provenance review remain release gates.
 
+**Correction, 2026-08-02:** the first implementation satisfied U3's *interfaces* without
+implementing the construction. `recipe.ts` generated N-pointed stars by alternating two
+radii around a circle and joined a couple of hand-picked chords, so every design rendered
+as a starburst and the whole morph range looked identical. It has been replaced with the
+polygons-in-contact construction this plan always intended (U0/U3): a periodic polygon
+scaffold plus one contact angle. See `docs/recipe-vocabulary.md`. Three assumptions in the
+kernel had to be corrected to carry real strapwork — strands self-cross, a crossing may
+belong to a single continuation, and geometry may leave its own cell — and the weave now
+uses a checkerboard colouring rather than the per-strand constraint solver. The launch set
+changed accordingly and every design is now labelled `inspired by`, since none is a
+reconstruction of the monument it cites.
+
 **Target repository:** `/Users/davidwilson/code/islamic-patterns` → `true-and-useful/islamic-patterns` (working name; verify availability before creation)
 
 ## Product intent

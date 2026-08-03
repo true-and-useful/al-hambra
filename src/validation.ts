@@ -9,8 +9,15 @@ import { compilePattern } from './geometry/recipe'
 import type { PatternDefinition } from './geometry/recipe'
 import type { PeriodicGraph, Vec2 } from './geometry/types'
 
+/**
+ * Distance thresholds are fractions of the pattern's scaffold edge length, not
+ * absolute coordinates, so a design stays equally well validated whatever world
+ * scale it is drawn at.
+ */
 export type ValidationTolerance = Readonly<{
+  /** Shortest permitted graph edge, as a fraction of the scaffold edge. */
   minimumEdgeLength: number
+  /** Clearance below which a sample is treated as suspect, same units. */
   warningClearance: number
   parameterPrecision: number
   exclusionMargin: number
@@ -43,8 +50,8 @@ export type ValidationReport = Readonly<{
 }>
 
 export const DEFAULT_VALIDATION_TOLERANCE: ValidationTolerance = {
-  minimumEdgeLength: 4,
-  warningClearance: 8,
+  minimumEdgeLength: 0.01,
+  warningClearance: 0.02,
   parameterPrecision: 1 / 65_536,
   exclusionMargin: 0.005,
 }
@@ -235,9 +242,15 @@ export function validatePatternRange(
   if (!Number.isInteger(sampleCount) || sampleCount < 2) {
     throw new Error('Range validation requires at least two samples')
   }
-  const tolerance: ValidationTolerance = {
+  const fractions: ValidationTolerance = {
     ...DEFAULT_VALIDATION_TOLERANCE,
     ...options.tolerance,
+  }
+  // Resolve the distance fractions against this pattern's own scale.
+  const tolerance: ValidationTolerance = {
+    ...fractions,
+    minimumEdgeLength: fractions.minimumEdgeLength * definition.edgeLength,
+    warningClearance: fractions.warningClearance * definition.edgeLength,
   }
   if (
     !Number.isFinite(tolerance.minimumEdgeLength) || tolerance.minimumEdgeLength <= 0 ||

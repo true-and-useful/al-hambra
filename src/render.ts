@@ -54,18 +54,47 @@ function tileMetrics(scene: RenderScene): TileMetrics {
   }
 }
 
+/**
+ * How far, in whole cells, the drawn geometry reaches outside its own cell.
+ *
+ * Strapwork runs for several cells before it closes, so a tile that only drew
+ * its own cell would be clipped at the pattern boundary and leave visible gaps.
+ * Every neighbour within this radius is drawn too, and the pattern tile clips
+ * the excess.
+ */
+function decorationHalo(scene: RenderScene): Readonly<{ u: number; v: number }> {
+  const { a, b } = scene.cell
+  const determinant = a.x * b.y - a.y * b.x
+  if (Math.abs(determinant) < 1e-9) return { u: 1, v: 1 }
+  let halo = { u: 1, v: 1 }
+  for (const path of scene.paths) {
+    for (const point of path.points) {
+      const x = point.x - scene.cell.origin.x
+      const y = point.y - scene.cell.origin.y
+      const u = (x * b.y - y * b.x) / determinant
+      const v = (a.x * y - a.y * x) / determinant
+      halo = {
+        u: Math.max(halo.u, Math.ceil(Math.abs(u)) + 1),
+        v: Math.max(halo.v, Math.ceil(Math.abs(v)) + 1),
+      }
+    }
+  }
+  return halo
+}
+
 function latticeTranslations(scene: RenderScene, metrics: TileMetrics): TileTranslation[] {
   const { a, b } = scene.cell
   const uCells = Math.round(metrics.width / Math.abs(a.x))
   const vCells = Math.round(metrics.height / Math.abs(b.y))
+  const halo = decorationHalo(scene)
   const translations: TileTranslation[] = []
-  for (let v = 0; v < vCells; v += 1) {
+  for (let v = -halo.v; v < vCells + halo.v; v += 1) {
     const shiftX = v * b.x
     const minimumU = metrics.oblique ? Math.floor(-shiftX / a.x) : 0
     const maximumU = metrics.oblique
       ? Math.ceil((metrics.width - shiftX) / a.x) - 1
       : uCells - 1
-    for (let u = minimumU; u <= maximumU; u += 1) {
+    for (let u = minimumU - halo.u; u <= maximumU + halo.u; u += 1) {
       translations.push({ x: u * a.x + v * b.x, y: u * a.y + v * b.y, u, v })
     }
   }
@@ -170,15 +199,24 @@ function crossingMarkup(
   }).join('')
 }
 
+/** True when the weave repeats on the cell, so one crossing group can be reused. */
+function weaveRepeatsPerCell(scene: RenderScene): boolean {
+  return scene.graph.crossings.every(
+    (crossing) => crossing.weavePhase.u === 0 && crossing.weavePhase.v === 0,
+  )
+}
+
 function patternContent(scene: RenderScene, palette: Palette, material: number): string {
   const metrics = tileMetrics(scene)
   const translations = latticeTranslations(scene, metrics)
-  const paths = translations.map((translation) =>
-    `<use href="#pattern-cell-paths" transform="translate(${number(translation.x)} ${number(translation.y)})"/>`,
-  ).join('')
-  const crossings = translations.map((translation) =>
-    crossingMarkup(scene, palette, material, translation),
-  ).join('')
+  const place = (id: string, translation: TileTranslation): string =>
+    `<use href="#${id}" transform="translate(${number(translation.x)} ${number(translation.y)})"/>`
+  const paths = translations.map((translation) => place('pattern-cell-paths', translation)).join('')
+  // Crossings paint after every strand so an over-strand covers the under-strand
+  // of a neighbouring cell too, not just its own.
+  const crossings = weaveRepeatsPerCell(scene)
+    ? translations.map((translation) => place('pattern-cell-crossings', translation)).join('')
+    : translations.map((translation) => crossingMarkup(scene, palette, material, translation)).join('')
   return `${paths}${crossings}`
 }
 
@@ -205,9 +243,13 @@ export function renderSceneMarkup(
     state.material,
     path.role,
   )).join('')
+  const cellCrossings = weaveRepeatsPerCell(scene)
+    ? crossingMarkup(scene, palette, state.material, { x: 0, y: 0, u: 0, v: 0 })
+    : ''
   return [
     '<defs>',
     `<g id="pattern-cell-paths">${cellPaths}</g>`,
+    cellCrossings ? `<g id="pattern-cell-crossings">${cellCrossings}</g>` : '',
     `<pattern id="ornament" patternUnits="userSpaceOnUse" width="${number(metrics.width)}" height="${number(metrics.height)}" patternTransform="${transform}">`,
     `<rect x="0" y="0" width="${number(metrics.width)}" height="${number(metrics.height)}" fill="${palette.background}"/>`,
     patternContent(scene, palette, state.material),

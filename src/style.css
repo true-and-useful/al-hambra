@@ -18,6 +18,20 @@
   color: var(--paper);
 }
 
+/*
+ * The wordmark, provenance link, and gesture hint sit straight on the artwork,
+ * so a pale palette would otherwise wash them out. Flipping the ink tokens
+ * keeps every palette legible without restyling each element.
+ */
+:root[data-chrome="light"] {
+  --ink: #e8dcc2;
+  --paper: #191410;
+  --paper-soft: rgb(25 20 16 / 0.74);
+  --paper-faint: rgb(25 20 16 / 0.56);
+  --line: rgb(25 20 16 / 0.2);
+  --panel: rgb(247 240 224 / 0.9);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -190,10 +204,10 @@ a:focus-visible {
   align-items: center;
   gap: 10px;
   padding: 9px 13px;
-  border: 1px solid rgb(232 220 194 / 0.17);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  color: rgb(232 220 194 / 0.78);
-  background: rgb(18 16 13 / 0.5);
+  color: var(--paper-soft);
+  background: var(--panel);
   box-shadow: 0 8px 30px rgb(0 0 0 / 0.16);
   font-size: 0.72rem;
   letter-spacing: 0.08em;

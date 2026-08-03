@@ -230,17 +230,32 @@ function updateControls(state: AppStateV1): void {
   updatePaletteButtons()
 }
 
+/** WCAG relative luminance, used only to pick a legible chrome for a palette. */
+function relativeLuminance(hex: string): number {
+  const value = hex.replace('#', '')
+  const channels = [0, 2, 4].map((offset) => {
+    const part = Number.parseInt(value.slice(offset, offset + 2), 16) / 255
+    return part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4
+  })
+  return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0)
+}
+
 function paint(state: AppStateV1): void {
   const startedAt = performance.now()
   const pattern = currentPattern()
   const compiled = compilePattern(pattern, state.morph)
   renderScene(svg, compiled.scene, state, paletteById(state.paletteId))
   updateControls(state)
-  const accent = paletteById(state.paletteId).accent
+  const palette = paletteById(state.paletteId)
+  const accent = palette.accent
   if (renderedAccent !== accent) {
     renderedAccent = accent
     document.documentElement.style.setProperty('--accent', accent)
   }
+  // The chrome sits directly on the artwork, so its ink has to follow the
+  // palette rather than assume a dark ground.
+  document.documentElement.dataset.chrome =
+    relativeLuminance(palette.background) > 0.4 ? 'light' : 'dark'
   if (!document.body.dataset.patternReady) {
     document.body.dataset.patternReady = 'true'
     performance.mark('pattern-ready')

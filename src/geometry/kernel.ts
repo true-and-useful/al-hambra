@@ -429,7 +429,12 @@ export function graphInvariantErrors(graph: PeriodicGraph): string[] {
       const continuation = continuationByArm.get(arm) ?? `missing:${arm}`
       continuationGroups.set(continuation, (continuationGroups.get(continuation) ?? 0) + 1)
     }
-    const pairable = continuationGroups.size === 2 && [...continuationGroups.values()].every((count) => count === 2)
+    // Two strands meeting give two continuations of two arms each; one strand
+    // crossing itself gives a single continuation of four.
+    const counts = [...continuationGroups.values()]
+    const pairable =
+      (continuationGroups.size === 2 && counts.every((count) => count === 2)) ||
+      (continuationGroups.size === 1 && counts[0] === 4)
     if (pairable && !crossingVertices.has(vertex)) errors.push(`${vertex} is missing a crossing record`)
     if (!pairable) errors.push(`${vertex} cannot be paired into two strand continuations`)
   }

@@ -166,6 +166,25 @@ function splitAtIntersections(
     [0, pointLineage(segment, 0)],
     [1, pointLineage(segment, 1)],
   ]))
+  // A path may run for several cells before it closes, so the translations worth
+  // testing follow from how far the geometry actually reaches rather than from a
+  // fixed one-cell halo. The bounding-box rejection below keeps this cheap.
+  const spread = (
+    low: (b: typeof bounds[number]) => number,
+    high: (b: typeof bounds[number]) => number,
+  ): number => {
+    let minimum = Number.POSITIVE_INFINITY
+    let maximum = Number.NEGATIVE_INFINITY
+    for (const entry of bounds) {
+      if (!entry) continue
+      minimum = Math.min(minimum, low(entry))
+      maximum = Math.max(maximum, high(entry))
+    }
+    return Number.isFinite(minimum) ? Math.ceil(maximum - minimum) + 1 : 1
+  }
+  const uSpan = spread((b) => b.minU, (b) => b.maxU)
+  const vSpan = spread((b) => b.minV, (b) => b.maxV)
+
   for (let leftIndex = 0; leftIndex < segments.length; leftIndex += 1) {
     const left = segments[leftIndex]
     if (!left) continue
@@ -175,9 +194,9 @@ function splitAtIntersections(
       const leftBounds = bounds[leftIndex]
       const rightBounds = bounds[rightIndex]
       if (!leftBounds || !rightBounds) continue
-      for (let u = -1; u <= 1; u += 1) {
+      for (let u = -uSpan; u <= uSpan; u += 1) {
         if (rightBounds.maxU + u < leftBounds.minU - EPSILON || rightBounds.minU + u > leftBounds.maxU + EPSILON) continue
-        for (let v = -1; v <= 1; v += 1) {
+        for (let v = -vSpan; v <= vSpan; v += 1) {
           if (rightBounds.maxV + v < leftBounds.minV - EPSILON || rightBounds.minV + v > leftBounds.maxV + EPSILON) continue
           const translatedRight: SourceSegment = {
             ...right,
@@ -261,134 +280,116 @@ function faceCycles(graph: PeriodicGraph): PeriodicCycle[] {
   return faces
 }
 
-function hashParity(value: string): 0 | 1 {
-  let hash = 0
-  for (const character of value) hash = (hash * 31 + character.charCodeAt(0)) | 0
-  return Math.abs(hash) % 2 as 0 | 1
-}
-
-function solveWeaveAssignments(
+/**
+ * Assigns over/under by checkerboard-colouring the faces of the arrangement.
+ *
+ * Two faces that share an edge get opposite colours, so the four sectors around
+ * every crossing alternate. Choosing the over-strand by the colour of one fixed
+ * sector therefore alternates along every strand automatically, which is the
+ * standard construction of an alternating diagram from a four-valent graph. It
+ * needs no lattice parity, so the weave repeats on the same cell as the pattern.
+ *
+ * Returns undefined when the faces are not two-colourable on the torus, which
+ * means no globally alternating weave exists on this cell.
+ */
+function checkerboardWeave(
   crossings: readonly Crossing[],
-  metadata: ReadonlyMap<string, EdgeMetadata>,
+  faces: readonly PeriodicCycle[],
   halfEdges: readonly PeriodicHalfEdge[],
-  components: readonly ContinuationComponent[],
-): Map<string, Readonly<{ overPair: 0 | 1; phase: Readonly<{ u: 0 | 1; v: 0 | 1 }> }>> {
-  type Occurrence = Readonly<{
-    crossing: string
-    pair: 0 | 1
-    order: number
-    tile: LatticeOffset
-  }>
-  type Constraint = Readonly<{
-    other: string
-    xor: 0 | 1
-    delta: LatticeOffset
-  }>
+): Map<string, Readonly<{ overPair: 0 | 1; phase: Readonly<{ u: 0 | 1; v: 0 | 1 }> }>> | undefined {
   const edgeById = new Map(halfEdges.map((edge) => [edge.id, edge]))
-  const crossingByVertex = new Map(crossings.map((crossing) => [crossing.vertex, crossing]))
-  const sequences = components.map((component) => {
-    const visits = componentVisits(component.edges, edgeById)
-    const occurrences: Occurrence[] = []
-    for (let order = 0; order < visits.length; order += 1) {
-      const visit = visits[order]
-      if (!visit) continue
-      const crossing = crossingByVertex.get(visit.vertex)
-      if (!crossing || crossing.kind === 'contact') continue
-      const pair = crossing.continuations.findIndex((arms) =>
-        arms.some((arm) => metadata.get(arm)?.continuationId === component.continuationId),
-      )
-      if (pair < 0) continue
-      const occurrence = { crossing: crossing.id, pair: pair as 0 | 1, order, tile: visit.tile }
-      const previous = occurrences.at(-1)
-      if (
-        previous?.crossing !== occurrence.crossing ||
-        previous.tile.u !== occurrence.tile.u || previous.tile.v !== occurrence.tile.v
-      ) occurrences.push(occurrence)
-    }
-    if (
-      component.closed && occurrences.length > 1 &&
-      occurrences[0]?.crossing === occurrences.at(-1)?.crossing
-    ) {
-      occurrences.pop()
-    }
-    const netWrap = component.edges.reduce<LatticeOffset>((sum, edgeId) => {
+  const faceByEdge = new Map<string, string>()
+  // Offset of each edge occurrence relative to the start of its own face cycle.
+  const offsetByEdge = new Map<string, LatticeOffset>()
+  for (const face of faces) {
+    let offset: LatticeOffset = { u: 0, v: 0 }
+    for (const edgeId of face.edges) {
+      faceByEdge.set(edgeId, face.id)
+      offsetByEdge.set(edgeId, offset)
       const edge = edgeById.get(edgeId)
-      return edge ? { u: sum.u + edge.wrap.u, v: sum.v + edge.wrap.v } : sum
-    }, { u: 0, v: 0 })
-    return { occurrences, closed: component.closed, netWrap }
-  })
-
-  const constraints = new Map<string, Constraint[]>()
-  const constrain = (left: Occurrence, right: Occurrence): void => {
-    const xor = (1 ^ left.pair ^ right.pair) as 0 | 1
-    const delta = { u: right.tile.u - left.tile.u, v: right.tile.v - left.tile.v }
-    const leftList = constraints.get(left.crossing) ?? []
-    const rightList = constraints.get(right.crossing) ?? []
-    leftList.push({ other: right.crossing, xor, delta })
-    rightList.push({ other: left.crossing, xor, delta: { u: -delta.u, v: -delta.v } })
-    constraints.set(left.crossing, leftList)
-    constraints.set(right.crossing, rightList)
-  }
-
-  for (const sequence of sequences) {
-    const unique = sequence.occurrences.sort((left, right) => left.order - right.order)
-    for (let index = 1; index < unique.length; index += 1) {
-      constrain(unique[index - 1]!, unique[index]!)
-    }
-    if (sequence.closed && unique.length > 0) {
-      const first = unique[0]!
-      constrain(unique.at(-1)!, {
-        ...first,
-        tile: { u: first.tile.u + sequence.netWrap.u, v: first.tile.v + sequence.netWrap.v },
-      })
+      if (edge) offset = { u: offset.u + edge.wrap.u, v: offset.v + edge.wrap.v }
     }
   }
 
-  const assignments = new Map<string, Readonly<{ overPair: 0 | 1; phase: Readonly<{ u: 0 | 1; v: 0 | 1 }> }>>()
+  // Lifting a face across one of its edges lands the neighbour at this offset.
+  type Link = Readonly<{ other: string; delta: LatticeOffset }>
+  const links = new Map<string, Link[]>()
+  for (const [edgeId, faceId] of faceByEdge) {
+    const edge = edgeById.get(edgeId)
+    const here = offsetByEdge.get(edgeId)
+    const twinOffset = edge ? offsetByEdge.get(edge.twin) : undefined
+    const other = edge ? faceByEdge.get(edge.twin) : undefined
+    if (!edge || !here || !twinOffset || other === undefined) continue
+    const delta = {
+      u: here.u + edge.wrap.u - twinOffset.u,
+      v: here.v + edge.wrap.v - twinOffset.v,
+    }
+    const entries = links.get(faceId) ?? []
+    entries.push({ other, delta })
+    links.set(faceId, entries)
+  }
+
   const phases = [
     { u: 0, v: 0 },
     { u: 1, v: 0 },
     { u: 0, v: 1 },
     { u: 1, v: 1 },
   ] as const
-  const phaseDelta = (phase: typeof phases[number], delta: LatticeOffset): 0 | 1 =>
-    (Math.abs(phase.u * delta.u + phase.v * delta.v) % 2) as 0 | 1
-  for (const crossing of crossings) {
-    if (assignments.has(crossing.id)) continue
-    let solution: Readonly<{ values: Map<string, 0 | 1>; phase: typeof phases[number] }> | undefined
-    for (const phase of phases) {
-      const values = new Map<string, 0 | 1>([[crossing.id, hashParity(crossing.id)]])
-      const queue = [crossing.id]
-      let valid = true
-      while (queue.length > 0 && valid) {
-        const current = queue.shift()!
-        const currentValue = values.get(current)!
-        for (const constraint of constraints.get(current) ?? []) {
-          const expected = (currentValue ^ constraint.xor ^ phaseDelta(phase, constraint.delta)) as 0 | 1
-          const assigned = values.get(constraint.other)
-          if (assigned !== undefined && assigned !== expected) {
-            valid = false
+  const parity = (phase: typeof phases[number], offset: LatticeOffset): 0 | 1 =>
+    (Math.abs(phase.u * offset.u + phase.v * offset.v) % 2) as 0 | 1
+
+  for (const phase of phases) {
+    const colour = new Map<string, 0 | 1>()
+    let consistent = true
+    for (const face of faces) {
+      if (!consistent) break
+      if (colour.has(face.id)) continue
+      colour.set(face.id, 0)
+      const queue = [face.id]
+      while (queue.length > 0 && consistent) {
+        const current = queue.shift()
+        if (current === undefined) continue
+        const here = colour.get(current) ?? 0
+        for (const link of links.get(current) ?? []) {
+          const want = (here ^ 1 ^ parity(phase, link.delta)) as 0 | 1
+          const existing = colour.get(link.other)
+          if (existing === undefined) {
+            colour.set(link.other, want)
+            queue.push(link.other)
+          } else if (existing !== want) {
+            consistent = false
             break
-          }
-          if (assigned === undefined) {
-            values.set(constraint.other, expected)
-            queue.push(constraint.other)
           }
         }
       }
-      if (valid) {
-        solution = { values, phase }
-        break
-      }
     }
-    if (!solution) throw new Error(
-      `Unsatisfiable periodic over/under system at ${crossing.id}: ${JSON.stringify(constraints.get(crossing.id) ?? [])}`,
-    )
-    for (const [id, overPair] of solution.values) {
-      assignments.set(id, { overPair, phase: solution.phase })
+    if (!consistent) continue
+
+    const assignments = new Map<
+      string,
+      Readonly<{ overPair: 0 | 1; phase: Readonly<{ u: 0 | 1; v: 0 | 1 }> }>
+    >()
+    for (const crossing of crossings) {
+      // The sector swept counter-clockwise from arm 0 to arm 1 belongs to the
+      // face that leaves this vertex along arm 1, shifted so that occurrence
+      // sits in the base cell.
+      const arm = crossing.armsCCW[1]
+      const sector = faceByEdge.get(arm)
+      const shift = offsetByEdge.get(arm) ?? { u: 0, v: 0 }
+      const base = sector === undefined ? 0 : colour.get(sector) ?? 0
+      const black = ((base ^ parity(phase, shift)) as 0 | 1) === 0
+      const zeroIndex = crossing.continuations.findIndex((pair) =>
+        pair.includes(crossing.armsCCW[0]),
+      )
+      const first = (zeroIndex < 0 ? 0 : zeroIndex) as 0 | 1
+      assignments.set(crossing.id, {
+        overPair: black ? first : ((1 - first) as 0 | 1),
+        phase,
+      })
     }
+    return assignments
   }
-  return assignments
+  return undefined
 }
 
 type ContinuationComponent = Readonly<{
@@ -398,103 +399,77 @@ type ContinuationComponent = Readonly<{
   closed: boolean
 }>
 
+/**
+ * Orders each continuation along the source path it came from rather than by
+ * walking the graph. A strand is allowed to cross itself — real strapwork does —
+ * so vertex degree cannot be used to recover the traversal order, but the
+ * parameter recorded when each fragment was cut always can.
+ */
 function continuationComponents(
   halfEdges: readonly PeriodicHalfEdge[],
   metadata: ReadonlyMap<string, EdgeMetadata>,
 ): ContinuationComponent[] {
   const edgeById = new Map(halfEdges.map((edge) => [edge.id, edge]))
-  const forwardByContinuation = new Map<string, string[]>()
+  const byContinuation = new Map<string, Map<string, string[]>>()
   for (const edge of halfEdges) {
     const detail = metadata.get(edge.id)
     if (!detail?.forward) continue
-    const entries = forwardByContinuation.get(detail.continuationId) ?? []
+    const paths = byContinuation.get(detail.continuationId) ?? new Map<string, string[]>()
+    const entries = paths.get(detail.sourcePath) ?? []
     entries.push(edge.id)
-    forwardByContinuation.set(detail.continuationId, entries)
+    paths.set(detail.sourcePath, entries)
+    byContinuation.set(detail.continuationId, paths)
+  }
+
+  const destinationOfEdge = (id: string): string | undefined => {
+    const twin = edgeById.get(id)?.twin
+    return twin === undefined ? undefined : edgeById.get(twin)?.origin
   }
 
   const results: ContinuationComponent[] = []
-  for (const [continuationId, forwardEdges] of forwardByContinuation) {
-    const adjacency = new Map<string, string[]>()
-    for (const edgeId of forwardEdges) {
-      const edge = edgeById.get(edgeId)
-      const destination = edge ? edgeById.get(edge.twin)?.origin : undefined
-      if (!edge || !destination) continue
-      for (const vertex of [edge.origin, destination]) {
-        const entries = adjacency.get(vertex) ?? []
-        entries.push(edgeId)
-        adjacency.set(vertex, entries)
-      }
-    }
-    for (const [vertex, entries] of adjacency) {
-      if (entries.length > 2) throw new Error(`${continuationId} branches at ${vertex}`)
+  for (const [continuationId, paths] of byContinuation) {
+    const chains = [...paths.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([, ids]) =>
+        [...ids].sort((left, right) =>
+          (metadata.get(left)?.order ?? 0) - (metadata.get(right)?.order ?? 0),
+        ),
+      )
+    let ordered = chains[0]
+    if (!ordered) continue
+    const pending = chains.slice(1)
+    while (pending.length > 0) {
+      const tail = destinationOfEdge(ordered.at(-1) ?? '')
+      const head = edgeById.get(ordered[0] ?? '')?.origin
+      const index = pending.findIndex((chain) =>
+        edgeById.get(chain[0] ?? '')?.origin === tail ||
+        destinationOfEdge(chain.at(-1) ?? '') === head,
+      )
+      if (index < 0) throw new Error(`${continuationId} could not be traversed end to end`)
+      const [chain] = pending.splice(index, 1)
+      if (!chain) continue
+      ordered = edgeById.get(chain[0] ?? '')?.origin === tail
+        ? [...ordered, ...chain]
+        : [...chain, ...ordered]
     }
 
-    const remaining = new Set(forwardEdges)
-    while (remaining.size > 0) {
-      const seed = [...remaining].sort()[0]!
-      const seedEdge = edgeById.get(seed)!
-      const seedDestination = edgeById.get(seedEdge.twin)!.origin
-      const componentEdges = new Set<string>()
-      const frontier = [seedEdge.origin, seedDestination]
-      const componentVertices = new Set<string>()
-      while (frontier.length > 0) {
-        const vertex = frontier.pop()!
-        if (componentVertices.has(vertex)) continue
-        componentVertices.add(vertex)
-        for (const edgeId of adjacency.get(vertex) ?? []) {
-          componentEdges.add(edgeId)
-          const edge = edgeById.get(edgeId)!
-          const destination = edgeById.get(edge.twin)!.origin
-          frontier.push(edge.origin === vertex ? destination : edge.origin)
-        }
+    for (let index = 1; index < ordered.length; index += 1) {
+      if (destinationOfEdge(ordered[index - 1] ?? '') !== edgeById.get(ordered[index] ?? '')?.origin) {
+        throw new Error(`${continuationId} is disconnected before ${ordered[index]}`)
       }
-
-      const degreeOne = [...componentVertices].filter((vertex) =>
-        (adjacency.get(vertex) ?? []).filter((edge) => componentEdges.has(edge)).length === 1,
-      ).sort()
-      const start = degreeOne[0] ?? [...componentVertices].sort()[0]!
-      const ordered: string[] = []
-      let current = start
-      while (ordered.length < componentEdges.size) {
-        const nextBase = (adjacency.get(current) ?? [])
-          .filter((edge) => componentEdges.has(edge) && remaining.has(edge))
-          .sort()[0]
-        if (!nextBase) break
-        const base = edgeById.get(nextBase)!
-        const oriented = base.origin === current ? base.id : base.twin
-        ordered.push(oriented)
-        remaining.delete(nextBase)
-        current = edgeById.get(edgeById.get(oriented)!.twin)!.origin
-      }
-      if (ordered.length !== componentEdges.size) throw new Error(`${continuationId} could not be traversed end to end`)
-      const role = metadata.get(seed)?.role ?? 'ornament'
-      if (ordered.some((edge) => metadata.get(edge)?.role !== role)) {
-        throw new Error(`${continuationId} mixes render roles`)
-      }
-      results.push({ continuationId, role, edges: ordered, closed: current === start })
     }
+    const role = metadata.get(ordered[0] ?? '')?.role ?? 'ornament'
+    if (ordered.some((edge) => metadata.get(edge)?.role !== role)) {
+      throw new Error(`${continuationId} mixes render roles`)
+    }
+    results.push({
+      continuationId,
+      role,
+      edges: ordered,
+      closed: destinationOfEdge(ordered.at(-1) ?? '') === edgeById.get(ordered[0] ?? '')?.origin,
+    })
   }
   return results
-}
-
-function componentVisits(
-  edges: readonly string[],
-  edgeById: ReadonlyMap<string, PeriodicHalfEdge>,
-): Array<Readonly<{ vertex: string; tile: LatticeOffset }>> {
-  if (edges.length === 0) return []
-  const first = edgeById.get(edges[0]!)
-  if (!first) return []
-  const visits = [{ vertex: first.origin, tile: { u: 0, v: 0 } }]
-  let tile: LatticeOffset = { u: 0, v: 0 }
-  for (const edgeId of edges) {
-    const edge = edgeById.get(edgeId)
-    const destination = edge ? edgeById.get(edge.twin)?.origin : undefined
-    if (edge && destination) {
-      tile = { u: tile.u + edge.wrap.u, v: tile.v + edge.wrap.v }
-      visits.push({ vertex: destination, tile })
-    }
-  }
-  return visits
 }
 
 /**
@@ -654,11 +629,18 @@ export function compilePeriodicArrangement(
       group.push(arm)
       groups.set(continuationId, group)
     }
-    if (groups.size !== 2 || [...groups.values()].some((group) => group.length !== 2)) continue
+    const pairedByContinuation =
+      groups.size === 2 && [...groups.values()].every((group) => group.length === 2)
+    const selfCrossing = groups.size === 1 && [...groups.values()][0]?.length === 4
+    if (!pairedByContinuation && !selfCrossing) continue
     const armsCCW = [...arms].sort((left, right) =>
       (angleByEdge.get(left) ?? 0) - (angleByEdge.get(right) ?? 0),
     ) as [string, string, string, string]
-    const continuations = [...groups.values()].map((group) => [group[0]!, group[1]!] as const)
+    // A strand crossing itself puts all four arms in one continuation, so the
+    // straight-through pairing has to come from the cyclic order instead.
+    const continuations = selfCrossing
+      ? [[armsCCW[0], armsCCW[2]] as const, [armsCCW[1], armsCCW[3]] as const]
+      : [...groups.values()].map((group) => [group[0]!, group[1]!] as const)
     const isOppositePair = (pair: readonly [string, string]): boolean => {
       const left = armsCCW.indexOf(pair[0])
       const right = armsCCW.indexOf(pair[1])
@@ -688,12 +670,23 @@ export function compilePeriodicArrangement(
     })
   }
 
-  const assignments = solveWeaveAssignments(crossings, metadata, mutableEdges, components)
+  const faces = faceCycles(graphWithoutFaces)
+  const assignments = checkerboardWeave(crossings, faces, mutableEdges)
+  // Every vertex having even degree guarantees a checkerboard exists, so a
+  // failure there is a real defect. Arrangements with loose ends have no
+  // alternating weave to find, and fall back to a stable arbitrary choice.
+  const degrees = new Map<string, number>()
+  for (const edge of mutableEdges) degrees.set(edge.origin, (degrees.get(edge.origin) ?? 0) + 1)
+  const everyDegreeEven = [...degrees.values()].every((degree) => degree % 2 === 0)
+  if (assignments === undefined && everyDegreeEven) {
+    throw new Error(
+      'The arrangement faces are not two-colourable, so no alternating weave exists on this cell',
+    )
+  }
   const solvedCrossings = crossings.map((crossing) => ({
     ...crossing,
-    overPair: assignments.get(crossing.id)?.overPair ?? 0,
-    weavePhase: assignments.get(crossing.id)?.phase ?? { u: 0, v: 0 },
+    overPair: assignments?.get(crossing.id)?.overPair ?? 0,
+    weavePhase: assignments?.get(crossing.id)?.phase ?? { u: 0, v: 0 },
   }))
-  const withCrossings: PeriodicGraph = { ...graphWithoutFaces, crossings: solvedCrossings }
-  return { ...withCrossings, faces: faceCycles(withCrossings) }
+  return { ...graphWithoutFaces, crossings: solvedCrossings, faces }
 }

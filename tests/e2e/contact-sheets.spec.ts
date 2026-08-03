@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
-const patternIds = ['darb-i-imam-ten', 'alaeddin-eight', 'kharraqan-twelve'] as const
+const patternIds = ['decagon-ten', 'octagon-eight', 'dodecagon-twelve'] as const
 
 test('generates the full-range visual contact sheets', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'generate once on desktop')

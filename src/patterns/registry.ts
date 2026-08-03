@@ -1,9 +1,9 @@
 import type { PatternDefinition } from '../geometry/recipe'
-import { alaeddinEight } from './alaeddin-eight'
-import { darbIImamTen } from './darb-i-imam-ten'
-import { kharraqanTwelve } from './kharraqan-twelve'
+import { decagonTen } from './decagon-ten'
+import { dodecagonTwelve } from './dodecagon-twelve'
+import { octagonEight } from './octagon-eight'
 
-export const patterns = [darbIImamTen, alaeddinEight, kharraqanTwelve] as const satisfies readonly PatternDefinition[]
+export const patterns = [decagonTen, octagonEight, dodecagonTwelve] as const satisfies readonly PatternDefinition[]
 
 export const defaultPattern = patterns[0]
 
@@ -11,5 +11,4 @@ export function patternById(id: string): PatternDefinition | undefined {
   return patterns.find((pattern) => pattern.id === id)
 }
 
-export { alaeddinEight, darbIImamTen, kharraqanTwelve }
-
+export { decagonTen, dodecagonTwelve, octagonEight }

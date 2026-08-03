@@ -3,7 +3,7 @@
 ## Automated gates
 
 - Strict TypeScript compilation
-- 33 unit tests covering graph invariants, translated-neighbor intersections, torus-representative normalization, composed periodic strands, lattice-phase weave doubling, torus wraps, seam/contact classification, alternating weave constraints, recipe compilation, 512-sample topology/clearance sweeps, state/history, URL parsing, SVG serialization, and PNG boundaries
+- 39 unit tests covering graph invariants, translated-neighbor intersections, torus-representative normalization, self-crossing strand traversal, checkerboard weave assignment, torus wraps, scaffold well-formedness, contact-angle compilation, 512-sample topology/clearance sweeps, state/history, URL parsing, SVG serialization, and PNG boundaries
 - Chromium browser coverage at desktop and Pixel 7-shaped viewports
 - Direct drag, gesture commit, undo, design/palette switching, living URL restore, standalone SVG, PNG, 200% text zoom, overflow, 44 px visible targets, and axe-core accessibility checks
 - For every design default and one stressed morph/material/palette/view state, exact live/export visual-structure comparison plus isolated SVG-to-PNG raster comparison at a documented mean antialiasing tolerance
@@ -14,20 +14,23 @@
 
 Every launch definition completes 512 samples with one deterministic topology signature, no graph-invariant error, no edge below the configured minimum, no nonincident edge-clearance warning across neighboring torus representatives, and no excluded interval. Threshold transitions are bisected to the configured precision. This is the plan's empirical guard, not a proof about arbitrarily narrow between-sample events.
 
-The faint scaffold is a non-woven construction guide: its transverse meetings remain explicit graph contacts but do not receive over/under gaps. Ornament-to-ornament intersections are solved end to end, including lattice-phase doubling when an alternating weave needs a decorated repeat larger than the geometric cell.
+Every crossing in the shipped collection is a genuine transverse meeting of two straps at a scaffold contact point, and every one is woven. Over/under comes from a checkerboard colouring of the arrangement faces, solved in the covering space with a lattice parity so it stays correct when the weave does not repeat on the base cell. All three launch designs happen to weave on their own cell, so no decorated repeat is doubled.
+
+Distance tolerances are fractions of each pattern's scaffold edge length rather than absolute coordinates, so a design stays equally well validated whatever world scale it is drawn at.
 
 ## Visual review performed
 
-- Regenerated and reviewed all three contact sheets after the periodic-arrangement and weave-solver rewrite for discontinuities, seam breaks, collapsed paths, sudden jumps, and visibly broken endpoints.
-- Rejected the first flagship composition because its scaffold dominated the rosettes; reduced scaffold weight and recentered each design before accepting the current sheets.
-- Confirmed the linework-to-band material anchors remain legible without edge clipping in the generated sheets.
+- Regenerated and reviewed all three 101-state contact sheets after the polygons-in-contact rewrite for discontinuities, seam breaks, collapsed paths, sudden jumps, and visibly broken endpoints.
+- Trimmed every exposed range against angles the signature alone would have accepted. Past roughly 90 degrees each design degenerates into self-intersecting spikes with **no** change in topology signature, which is the concrete reason the human sheet review remains a required gate rather than a formality.
+- Excluded the flagship's topology transition near 72 degrees and the clearance pinch near 71 degrees, and the twelvefold singularity at exactly 60 degrees.
+- Confirmed the linework-to-band material anchors remain legible without edge clipping; the anchors read as near-identical at contact-sheet thumbnail size and were checked at full size instead.
 
 ## Human gates still open
 
 - Test real current iOS Safari and Android Chrome in portrait and landscape.
 - Verify native pinch takes ownership after a second touch without preserving a partial morph or history entry.
 - Tune drag distance and endpoint sensitivity with a thumb on both devices; the author must sign off that small adjustments and full-range travel both feel deliberate.
-- Complete a specialist provenance review for the `adapted from` Alaeddin and Kharraqan labels. Darb-i Imam is deliberately labelled `inspired by IRA0911`; the app and SVG metadata make no exact-reconstruction claim.
+- Complete a specialist provenance review. All three designs are deliberately labelled `inspired by`, because each is a polygons-in-contact construction in the family of its cited record rather than a reconstruction of it; the app and SVG metadata make no exact-reconstruction claim.
 - Repeat the performance recording on the named iPhone, Android phone, and laptop with the documented production profile.
 
 These are release gates, not hidden claims of completion. Touch emulation and local Chromium cannot settle them.
