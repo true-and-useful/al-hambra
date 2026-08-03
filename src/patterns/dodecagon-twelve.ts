@@ -30,5 +30,5 @@ export const dodecagonTwelve: PatternDefinition = {
     viewScale: 0.5,
     viewCenter: { cx: 0.5, cy: 0.5 },
   },
-  palettes: ['brick-and-bone', 'verdigris-sand', 'copper-night'],
+  palettes: ['brick-and-bone', 'verdigris-sand', 'copper-night', 'alhambra-glaze', 'marrakesh-clay'],
 }

@@ -6,13 +6,24 @@ import { patternById, patterns } from '../src/patterns/registry'
 import { refineSuspectInterval, validatePatternRange } from '../src/validation'
 
 describe('curated pattern registry', () => {
-  it('contains a flagship, an elementary case, and a distinct companion', () => {
-    expect(patterns.map((pattern) => pattern.id)).toEqual([
-      'decagon-ten',
-      'octagon-eight',
-      'dodecagon-twelve',
-    ])
+  it('opens on the flagship and carries the required launch set', () => {
+    // The collection grows, so assert the shape rather than the exact list.
+    expect(patterns.length).toBeGreaterThanOrEqual(3)
+    expect(patterns[0]?.id).toBe('decagon-ten')
+    for (const required of ['decagon-ten', 'octagon-eight', 'dodecagon-twelve']) {
+      expect(patternById(required)).toBeDefined()
+    }
+    expect(new Set(patterns.map((pattern) => pattern.id)).size).toBe(patterns.length)
     expect(patternById('missing')).toBeUndefined()
+  })
+
+  it('gives every design a curated range inside the usable band', () => {
+    for (const pattern of patterns) {
+      expect(pattern.morph.max).toBeGreaterThan(pattern.morph.min)
+      // Contact rays turn degenerate at the right angles and blow up past 90.
+      expect(pattern.morph.min).toBeGreaterThan(45)
+      expect(pattern.morph.max).toBeLessThan(89)
+    }
   })
 
   it('names a documented source and an honest relationship for every design', () => {

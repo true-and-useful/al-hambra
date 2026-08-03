@@ -1,12 +1,6 @@
 import type { AppStateV1 } from './state'
-import { translateByWrap } from './geometry/kernel'
-import type {
-  Crossing,
-  PeriodicGraph,
-  RenderScene,
-  ScenePath,
-  Vec2,
-} from './geometry/types'
+import { underCrossingIndices, unwrapCycle } from './geometry/kernel'
+import type { RenderScene, ScenePath, Vec2 } from './geometry/types'
 import type { Palette } from './palettes'
 
 export const RENDER_VIEWBOX = Object.freeze({ width: 1200, height: 800 })
@@ -26,17 +20,75 @@ function smoothstep(from: number, to: number, value: number): number {
   return t * t * (3 - 2 * t)
 }
 
-function pathData(path: ScenePath, dx = 0, dy = 0): string {
-  const points = path.points
-  if (points.length === 0) return ''
+function polylineData(points: readonly Vec2[], closed: boolean): string {
   const first = points[0]
-  if (!first) return ''
-  const commands = [`M ${number(first.x + dx)} ${number(first.y + dy)}`]
+  if (points.length === 0 || !first) return ''
+  const commands = [`M ${number(first.x)} ${number(first.y)}`]
   for (const point of points.slice(1)) {
-    commands.push(`L ${number(point.x + dx)} ${number(point.y + dy)}`)
+    commands.push(`L ${number(point.x)} ${number(point.y)}`)
   }
-  if (path.closed) commands.push('Z')
+  if (closed) commands.push('Z')
   return commands.join(' ')
+}
+
+type Run = Readonly<{ points: readonly Vec2[]; closed: boolean }>
+
+/**
+ * Splits a strand into the runs that are actually drawn, cutting a gap wherever
+ * it passes beneath another strand.
+ *
+ * Cutting the strand that goes under is what makes the weave read. The
+ * alternative -- painting the crossing over with a background-coloured patch --
+ * also erases whatever unrelated geometry happens to sit nearby, which shows up
+ * as gashes across untouched bands once the geometry gets tight.
+ */
+function strandRuns(path: ScenePath, under: readonly number[], gap: number): Run[] {
+  const points = path.points
+  const segments = points.length - 1
+  if (segments < 1) return []
+  const loops = path.netWrap.u === 0 && path.netWrap.v === 0
+  const cuts = new Set(under)
+  if (cuts.size === 0 || gap <= 0) {
+    return [{ points: loops ? points.slice(0, segments) : points, closed: loops }]
+  }
+
+  const towards = (from: Vec2, to: Vec2): Vec2 => {
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const length = Math.hypot(dx, dy)
+    if (length <= gap) return from
+    return { x: from.x + (dx / length) * gap, y: from.y + (dy / length) * gap }
+  }
+
+  const runs: Run[] = []
+  let current: Vec2[] = []
+  for (let index = 0; index <= segments; index += 1) {
+    const point = points[index]
+    if (!point) continue
+    // The final point is the first one in the next cell, so it carries the same
+    // crossing and has to be cut the same way.
+    const isCut = cuts.has(index === segments ? 0 : index)
+    if (!isCut) {
+      current.push(point)
+      continue
+    }
+    const previous = points[index - 1]
+    if (current.length > 0 && previous) current.push(towards(point, previous))
+    if (current.length > 1) runs.push({ points: current, closed: false })
+    const next = points[index + 1]
+    current = next ? [towards(point, next)] : []
+  }
+  if (current.length > 1) runs.push({ points: current, closed: false })
+
+  // A closed strand whose first vertex is not a cut starts and ends mid-run.
+  if (loops && !cuts.has(0) && runs.length > 1) {
+    const first = runs.shift()
+    const last = runs.pop()
+    if (first && last) {
+      runs.push({ points: [...last.points, ...first.points.slice(1)], closed: false })
+    }
+  }
+  return runs
 }
 
 function tileMetrics(scene: RenderScene): TileMetrics {
@@ -124,100 +176,65 @@ function strokeMarkup(
   ].join('')
 }
 
-function crossingDirection(
-  graph: PeriodicGraph,
-  crossing: Crossing,
-  vertices: ReadonlyMap<string, PeriodicGraph['vertices'][number]>,
-  edges: ReadonlyMap<string, PeriodicGraph['halfEdges'][number]>,
-  overPair: 0 | 1,
-): Readonly<{ start: Vec2; end: Vec2 }> | undefined {
-  const pair = crossing.continuations[overPair]
-  const edge = edges.get(pair[0])
-  const twin = edge ? edges.get(edge.twin) : undefined
-  const center = vertices.get(crossing.vertex)?.position
-  const destination = twin ? vertices.get(twin.origin) : undefined
-  const toward = destination && edge
-    ? translateByWrap(destination.position, graph.cell, edge.wrap)
-    : undefined
-  if (!center || !toward) return undefined
-  const dx = toward.x - center.x
-  const dy = toward.y - center.y
-  const magnitude = Math.hypot(dx, dy)
-  if (magnitude === 0) return undefined
-  const span = 36
-  const ux = (dx / magnitude) * span
-  const uy = (dy / magnitude) * span
-  return {
-    start: { x: center.x - ux, y: center.y - uy },
-    end: { x: center.x + ux, y: center.y + uy },
-  }
-}
-
-function crossingMarkup(
-  scene: RenderScene,
-  palette: Palette,
-  material: number,
-  translation: TileTranslation,
-): string {
-  const materialized = smoothstep(0.08, 0.34, material)
-  if (materialized === 0) return ''
-  const edges = new Map(scene.graph.halfEdges.map((edge) => [edge.id, edge]))
-  const vertices = new Map(scene.graph.vertices.map((vertex) => [vertex.id, vertex]))
-  const roleByArm = new Map<string, ScenePath['role']>()
-  for (const strand of scene.graph.strands) {
-    for (const edgeId of strand.edges) {
-      roleByArm.set(edgeId, strand.role)
-      const twin = edges.get(edgeId)?.twin
-      if (twin) roleByArm.set(twin, strand.role)
-    }
-  }
-  return scene.graph.crossings.map((crossing) => {
-    if (crossing.kind === 'contact') return ''
-    const phase = Math.abs(
-      crossing.weavePhase.u * translation.u + crossing.weavePhase.v * translation.v,
-    ) % 2
-    const overPair = (crossing.overPair ^ phase) as 0 | 1
-    const segment = crossingDirection(scene.graph, crossing, vertices, edges, overPair)
-    if (!segment) return ''
-    const overArms = new Set(crossing.continuations[overPair])
-    const role = roleByArm.get([...overArms][0] ?? '') ?? 'strand'
-    const roleScale = role === 'strand' ? 0.42 : role === 'accent' ? 0.3 : 1
-    const bandWidth = (2.2 + material * 24.6) * roleScale
-    const edgeWidth = bandWidth + materialized * (role === 'ornament' ? 4 + material * 3 : 2)
-    const color = role === 'accent' ? palette.accent : palette.strand
-    const opacity = role === 'strand' ? 0.2 + material * 0.12 : role === 'accent' ? 0.82 : 0.96
-    const x1 = segment.start.x + translation.x
-    const y1 = segment.start.y + translation.y
-    const x2 = segment.end.x + translation.x
-    const y2 = segment.end.y + translation.y
-    const coords = `x1="${number(x1)}" y1="${number(y1)}" x2="${number(x2)}" y2="${number(y2)}" stroke-linecap="square"`
-    return [
-      `<line ${coords} stroke="${palette.background}" stroke-width="${number(edgeWidth + 7)}" opacity="${number(materialized)}"/>`,
-      `<line ${coords} stroke="${palette.edge}" stroke-width="${number(edgeWidth)}" opacity="${number(opacity * materialized)}"/>`,
-      `<line ${coords} stroke="${color}" stroke-width="${number(bandWidth)}" opacity="${number(opacity * materialized)}"/>`,
-    ].join('')
+/**
+ * Fills the enclosed regions of the arrangement.
+ *
+ * These are the same faces the weave solver colours, reused as mosaic tiles: a
+ * ten-point rosette centre is simply the face with the most vertices. Faces are
+ * grouped into classes by vertex count and area so that every rosette centre
+ * takes one palette colour and every small filler takes another, the way glazed
+ * tilework is cut.
+ */
+function faceMarkup(scene: RenderScene, palette: Palette): string {
+  const colours = palette.faces
+  if (!colours || colours.length === 0) return ''
+  const classes = faceClasses(scene)
+  return scene.graph.faces.map((face) => {
+    const outline = unwrapCycle(scene.graph, face)
+    if (outline.length < 4) return ''
+    const rank = classes.get(face.id) ?? 0
+    const colour = colours[rank % colours.length] ?? colours[0]
+    // The closing point repeats the first, so drop it and let Z close the path.
+    const d = polylineData(outline.slice(0, -1), true)
+    if (!d) return ''
+    return `<path d="${d}" fill="${colour}" stroke="${colour}" stroke-width="0.75"/>`
   }).join('')
 }
 
-/** True when the weave repeats on the cell, so one crossing group can be reused. */
-function weaveRepeatsPerCell(scene: RenderScene): boolean {
-  return scene.graph.crossings.every(
-    (crossing) => crossing.weavePhase.u === 0 && crossing.weavePhase.v === 0,
-  )
+/** Ranks faces into classes, largest first, so colours stay stable while morphing. */
+function faceClasses(scene: RenderScene): Map<string, number> {
+  const measured = scene.graph.faces.map((face) => {
+    const outline = unwrapCycle(scene.graph, face).slice(0, -1)
+    let twiceArea = 0
+    for (let index = 0; index < outline.length; index += 1) {
+      const a = outline[index]
+      const b = outline[(index + 1) % outline.length]
+      if (!a || !b) continue
+      twiceArea += a.x * b.y - b.x * a.y
+    }
+    return { id: face.id, sides: outline.length, area: Math.abs(twiceArea / 2) }
+  })
+  const key = (entry: typeof measured[number]): string =>
+    `${entry.sides}:${entry.area.toExponential(3)}`
+  const order = [...new Set(measured.map(key))].sort((left, right) => {
+    const areaOf = (k: string): number => Number(k.split(':')[1] ?? 0)
+    return areaOf(right) - areaOf(left)
+  })
+  return new Map(measured.map((entry) => [entry.id, order.indexOf(key(entry))]))
 }
 
-function patternContent(scene: RenderScene, palette: Palette, material: number): string {
+function patternContent(scene: RenderScene, mosaic: boolean): string {
   const metrics = tileMetrics(scene)
   const translations = latticeTranslations(scene, metrics)
   const place = (id: string, translation: TileTranslation): string =>
     `<use href="#${id}" transform="translate(${number(translation.x)} ${number(translation.y)})"/>`
+  // Every face is laid down before any strand, so the mosaic reads as a ground
+  // the strapwork sits on rather than a patchwork interleaved with it.
+  const faces = mosaic
+    ? translations.map((translation) => place('pattern-cell-faces', translation)).join('')
+    : ''
   const paths = translations.map((translation) => place('pattern-cell-paths', translation)).join('')
-  // Crossings paint after every strand so an over-strand covers the under-strand
-  // of a neighbouring cell too, not just its own.
-  const crossings = weaveRepeatsPerCell(scene)
-    ? translations.map((translation) => place('pattern-cell-crossings', translation)).join('')
-    : translations.map((translation) => crossingMarkup(scene, palette, material, translation)).join('')
-  return `${paths}${crossings}`
+  return `${faces}${paths}`
 }
 
 export function renderSceneMarkup(
@@ -237,22 +254,31 @@ export function renderSceneMarkup(
     RENDER_VIEWBOX.height / 2 - cellCenter.y * state.view.scale +
     (0.5 - state.view.cy) * metrics.height * state.view.scale
   const transform = `translate(${number(offsetX)} ${number(offsetY)}) scale(${number(state.view.scale)})`
-  const cellPaths = scene.paths.map((path) => strokeMarkup(
-    pathData(path),
-    palette,
-    state.material,
-    path.role,
-  )).join('')
-  const cellCrossings = weaveRepeatsPerCell(scene)
-    ? crossingMarkup(scene, palette, state.material, { x: 0, y: 0, u: 0, v: 0 })
-    : ''
+  // Gap the under-strand by half the widest ink plus a hair, so the strand that
+  // passes over reads as unbroken. At low material there is no gap to cut.
+  const bandWidth = 2.2 + state.material * 24.6
+  const materialized = smoothstep(0.08, 0.34, state.material)
+  const gap = materialized * (bandWidth / 2 + 2 + state.material * 2)
+  const under = underCrossingIndices(scene.graph)
+  const cellPaths = scene.paths.map((path) =>
+    strandRuns(path, under.get(path.id) ?? [], gap)
+      .map((run) => strokeMarkup(
+        polylineData(run.points, run.closed),
+        palette,
+        state.material,
+        path.role,
+      ))
+      .join(''),
+  ).join('')
+  const mosaic = (palette.faces?.length ?? 0) > 0
+  const cellFaces = mosaic ? faceMarkup(scene, palette) : ''
   return [
     '<defs>',
+    cellFaces ? `<g id="pattern-cell-faces">${cellFaces}</g>` : '',
     `<g id="pattern-cell-paths">${cellPaths}</g>`,
-    cellCrossings ? `<g id="pattern-cell-crossings">${cellCrossings}</g>` : '',
     `<pattern id="ornament" patternUnits="userSpaceOnUse" width="${number(metrics.width)}" height="${number(metrics.height)}" patternTransform="${transform}">`,
     `<rect x="0" y="0" width="${number(metrics.width)}" height="${number(metrics.height)}" fill="${palette.background}"/>`,
-    patternContent(scene, palette, state.material),
+    patternContent(scene, mosaic),
     '</pattern>',
     '</defs>',
     `<rect x="0" y="0" width="${RENDER_VIEWBOX.width}" height="${RENDER_VIEWBOX.height}" fill="${palette.background}"/>`,

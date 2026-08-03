@@ -9,8 +9,14 @@ two facts, so nothing in the kernel knows which design it is drawing. See
 
 The collection is deliberately structurally mixed. The elementary case proves the
 path end to end, the flagship breaks any abstraction fitted only to a single
-regular-polygon family, and the companion proves the kernel is not square-grid
+regular-polygon family, and the companions prove the kernel is not square-grid
 software.
+
+**Scaffolds need contrast to be worth shipping.** A single-tile scaffold (plain
+squares, plain hexagons) resolves to a uniform lattice: every contact point is
+identical, so the construction has nothing to play against and the result is
+graph paper rather than ornament. Both were built, reviewed, and dropped. What
+makes a seed interesting is two or more tile families of visibly different size.
 
 ## Provenance policy
 
@@ -54,7 +60,7 @@ geometry is generated independently.
 ### Twelvefold Vault — the companion
 
 - **Relationship:** inspired by the Kharraqan–W85 pattern family
-- **Scaffold:** the rhombitrihexagonal tiling (4.6.12) — regular dodecagons,
+- **Scaffold:** the truncated trihexagonal tiling (4.6.12) — regular dodecagons,
   hexagons, and squares on a hexagonal lattice; one dodecagon, two hexagons, and
   three squares per cell.
 - **Distinctness:** three tile families on a hexagonal repeat put the twelve-point
@@ -65,13 +71,33 @@ geometry is generated independently.
   does not reconstruct their brickwork.
 - **Source:** [MIT Tiling Search W85](https://tilingsearch.mit.edu/HTML/data18/W85.html)
 
+### Sixfold Garden
+
+- **Relationship:** inspired by the polygons-in-contact construction
+- **Scaffold:** the trihexagonal tiling (3.6.3.6) — regular hexagons with
+  triangles between them; one hexagon and two triangles per cell.
+- **Distinctness:** the only sixfold design in the collection. It opens near the
+  top of its range, where the six-point stars are crisp.
+- **Validated contact-angle range:** 61°–86°
+
+### Twelvefold Lantern
+
+- **Relationship:** inspired by the polygons-in-contact construction
+- **Scaffold:** the truncated hexagonal tiling (3.12.12) — dodecagons meeting
+  edge to edge with triangles closing the gaps.
+- **Distinctness:** its twelve-point centres touch directly, which reads very
+  differently from the same fold spaced out on a 4.6.12 ground.
+- **Validated contact-angle range:** 61°–86°
+
 ## Construction matrix
 
-| Design | Scaffold | Tiles per cell | Lattice | Contact range | Strands per cell |
-|---|---|---|---|---|---|
-| Tenfold Rose | decagon + rhombus | 1 + 4 | oblique, centred rectangular | 57°–70° | 3 |
-| Eightfold Court | octagon + square | 1 + 1 | square | 46°–86° | 2 |
-| Twelvefold Vault | dodecagon + hexagon + square | 1 + 2 + 3 | hexagonal | 61°–84° | 6 |
+| Design | Scaffold | Tiles per cell | Lattice | Contact range |
+|---|---|---|---|---|
+| Tenfold Rose | decagon + rhombus | 1 + 4 | oblique, centred rectangular | 57°–70° |
+| Eightfold Court | octagon + square | 1 + 1 | square | 46°–86° |
+| Twelvefold Vault | dodecagon + hexagon + square | 1 + 2 + 3 | hexagonal | 61°–84° |
+| Sixfold Garden | hexagon + triangle | 1 + 2 | hexagonal | 61°–86° |
+| Twelvefold Lantern | dodecagon + triangle | 1 + 2 | hexagonal | 61°–86° |
 
 ## How the ranges were chosen
 
@@ -92,3 +118,21 @@ range is a curation decision, not just a validity one. Three things bound it:
 topology signature plus minimum clearances, and bisects any suspect neighbourhood.
 Distance thresholds are fractions of the scaffold edge length, so a design stays
 equally well validated whatever world scale it is drawn at.
+
+## Mosaic palettes
+
+The kernel already computes every enclosed region of the arrangement, on the
+torus, in order to solve the weave. Those regions are also the mosaic tiles: a
+ten-point rosette centre is simply the face with the most vertices and the
+largest area. A palette that carries `faces` colours fills them, and the design
+reads as cut tilework instead of strapwork on a plain ground.
+
+Faces are grouped into classes by vertex count and area, largest first, so the
+colours stay put while the pattern morphs. The launch designs produce three to
+five classes each, which is a comfortable size for a hand-picked palette.
+
+| Design | Faces per repeat | Distinct classes |
+|---|---|---|
+| Tenfold Rose | 13 | 5 |
+| Eightfold Court | 6 | 3 |
+| Twelvefold Vault | 18 | 4 |

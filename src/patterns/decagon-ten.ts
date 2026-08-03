@@ -31,5 +31,5 @@ export const decagonTen: PatternDefinition = {
     viewScale: 0.55,
     viewCenter: { cx: 0.5, cy: 0.5 },
   },
-  palettes: ['turquoise-brick', 'saffron-night', 'ink-and-parchment'],
+  palettes: ['turquoise-brick', 'saffron-night', 'ink-and-parchment', 'zellij-court', 'alhambra-glaze'],
 }

@@ -2,10 +2,16 @@ import { expect, test } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
-const patternIds = ['decagon-ten', 'octagon-eight', 'dodecagon-twelve'] as const
+import { patterns } from '../../src/patterns/registry'
+
+// Read the registry so a new seed cannot be added without also being reviewed.
+const patternIds = patterns.map((pattern) => pattern.id)
 
 test('generates the full-range visual contact sheets', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'generate once on desktop')
+  // 101 morph samples plus material anchors for every registered design, so the
+  // budget has to grow with the collection rather than sit at the default.
+  test.setTimeout(120_000 + patternIds.length * 90_000)
   const outputDirectory = resolve('docs/contact-sheets')
   await mkdir(outputDirectory, { recursive: true })
 

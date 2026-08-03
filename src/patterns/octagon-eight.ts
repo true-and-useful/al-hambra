@@ -30,5 +30,5 @@ export const octagonEight: PatternDefinition = {
     viewScale: 0.55,
     viewCenter: { cx: 0.5, cy: 0.5 },
   },
-  palettes: ['lapis-and-ivory', 'ink-and-parchment', 'copper-night'],
+  palettes: ['lapis-and-ivory', 'ink-and-parchment', 'copper-night', 'zellij-court', 'marrakesh-clay'],
 }

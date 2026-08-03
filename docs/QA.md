@@ -3,7 +3,7 @@
 ## Automated gates
 
 - Strict TypeScript compilation
-- 42 unit tests covering graph invariants, translated-neighbor intersections, torus-representative normalization, self-crossing strand traversal, checkerboard weave assignment, torus wraps, scaffold well-formedness, contact-angle compilation, 512-sample topology/clearance sweeps, state/history, URL parsing, SVG serialization, and PNG boundaries
+- 55 unit tests covering graph invariants, translated-neighbor intersections, torus-representative normalization, self-crossing strand traversal, checkerboard weave assignment, torus wraps, scaffold well-formedness, contact-angle compilation, 512-sample topology/clearance sweeps, state/history, URL parsing, SVG serialization, and PNG boundaries
 - Chromium browser coverage at desktop and Pixel 7-shaped viewports
 - Direct drag, gesture commit, undo, design/palette switching, living URL restore, standalone SVG, PNG, 200% text zoom, overflow, 44 px visible targets, and axe-core accessibility checks
 - For every design default and one stressed morph/material/palette/view state, exact live/export visual-structure comparison plus isolated SVG-to-PNG raster comparison at a documented mean antialiasing tolerance
@@ -15,6 +15,8 @@
 ## Automated topology result
 
 Every launch definition completes 512 samples with one deterministic topology signature, no graph-invariant error, no edge below the configured minimum, no nonincident edge-clearance warning across neighboring torus representatives, and no excluded interval. Threshold transitions are bisected to the configured precision. This is the plan's empirical guard, not a proof about arbitrarily narrow between-sample events.
+
+The weave is drawn by cutting a gap into the strand that passes underneath, not by painting the crossing over with a background-coloured patch. The old approach also erased whatever unrelated geometry sat near a crossing, which showed as gashes across untouched bands once the geometry got tight.
 
 Every crossing in the shipped collection is a genuine transverse meeting of two straps at a scaffold contact point, and every one is woven. Over/under comes from a checkerboard colouring of the arrangement faces, solved in the covering space with a lattice parity so it stays correct when the weave does not repeat on the base cell. All three launch designs happen to weave on their own cell, so no decorated repeat is doubled.
 

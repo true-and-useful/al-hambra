@@ -1,0 +1,30 @@
+{
+  "patternId": "dodecagon-triangle-twelve",
+  "name": "Twelvefold Lantern",
+  "scaffold": "dodecagon-triangle",
+  "contactAngleDegrees": {
+    "min": 61,
+    "max": 86,
+    "atDefault": 73.5
+  },
+  "sampleCount": 512,
+  "topology": {
+    "distinctSignatures": 1,
+    "signatureDigest": "d41fc2d4983a262baedf90db701298537a2eb7d290c7105c7f181863bbe793d8",
+    "signatureLength": 15909
+  },
+  "tolerance": {
+    "note": "Distance thresholds are fractions of the scaffold edge length.",
+    "scaffoldEdgeLength": 150.0515477614287,
+    "minimumEdgeLengthFraction": 0.01,
+    "warningClearanceFraction": 0.02,
+    "parameterPrecision": 0.0000152587890625,
+    "exclusionMargin": 0.005
+  },
+  "minimumObservedClearance": 5.80865530090086,
+  "minimumObservedEdgeLength": 37.5186012050438,
+  "suspectIntervals": [],
+  "excludedRanges": [],
+  "invariantErrors": [],
+  "valid": true
+}

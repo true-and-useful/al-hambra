@@ -165,8 +165,8 @@ export function octagonSquareTiling(scale: number): TilingDefinition {
 }
 
 /**
- * Rhombitrihexagonal tiling (4.6.12): regular dodecagons, hexagons, and squares
- * on a hexagonal lattice. Three tile families meeting at one contact angle.
+ * Truncated trihexagonal tiling (4.6.12): regular dodecagons, hexagons, and
+ * squares on a hexagonal lattice. Three tile families at one contact angle.
  */
 export function dodecagonHexagonSquareTiling(scale: number): TilingDefinition {
   const dodecagonInradius = (2 + Math.sqrt(3)) / 2
@@ -193,6 +193,94 @@ export function dodecagonHexagonSquareTiling(scale: number): TilingDefinition {
       {
         id: 'hexagon-b',
         verts: counterClockwise(regularPolygon({ x: 2 * hex.x, y: 2 * hex.y }, 6, 1, 0)),
+      },
+    ],
+  }, scale)
+}
+
+/** Square tiling (4.4.4.4): the plainest scaffold, giving fourfold strapwork. */
+export function squareTiling(scale: number): TilingDefinition {
+  return scaleTiling({
+    id: 'square',
+    cell: { origin: { x: 0, y: 0 }, a: { x: 1, y: 0 }, b: { x: 0, y: 1 } },
+    tiles: [{
+      id: 'square',
+      verts: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }],
+    }],
+  }, scale)
+}
+
+/** Regular hexagons (6.6.6). One per cell; the plainest sixfold field. */
+export function hexagonTiling(scale: number): TilingDefinition {
+  const inradius = Math.sqrt(3) / 2
+  return scaleTiling({
+    id: 'hexagon',
+    cell: {
+      origin: { x: 0, y: 0 },
+      a: { x: 2 * inradius, y: 0 },
+      b: { x: inradius, y: 1.5 },
+    },
+    tiles: [
+      { id: 'hexagon', verts: counterClockwise(regularPolygon({ x: 0, y: 0 }, 6, 1, 30)) },
+    ],
+  }, scale)
+}
+
+/** Trihexagonal tiling (3.6.3.6): one hexagon and two triangles per cell. */
+export function hexagonTriangleTiling(scale: number): TilingDefinition {
+  const a: Vec2 = { x: 2, y: 0 }
+  const b: Vec2 = { x: 1, y: Math.sqrt(3) }
+  const triangleRadius = 1 / Math.sqrt(3)
+  return scaleTiling({
+    id: 'hexagon-triangle',
+    cell: { origin: { x: 0, y: 0 }, a, b },
+    tiles: [
+      { id: 'hexagon', verts: counterClockwise(regularPolygon({ x: 0, y: 0 }, 6, 1, 0)) },
+      {
+        id: 'triangle-down',
+        verts: counterClockwise(
+          regularPolygon({ x: (a.x + b.x) / 3, y: (a.y + b.y) / 3 }, 3, triangleRadius, -90),
+        ),
+      },
+      {
+        id: 'triangle-up',
+        verts: counterClockwise(
+          regularPolygon(
+            { x: (2 * (a.x + b.x)) / 3, y: (2 * (a.y + b.y)) / 3 }, 3, triangleRadius, 90,
+          ),
+        ),
+      },
+    ],
+  }, scale)
+}
+
+/**
+ * Truncated hexagonal tiling (3.12.12): dodecagons touching edge to edge with
+ * triangles in the gaps. A twelvefold field quite unlike the 4.6.12 one.
+ */
+export function dodecagonTriangleTiling(scale: number): TilingDefinition {
+  const inradius = (2 + Math.sqrt(3)) / 2
+  const R12 = 1 / (2 * Math.sin(radians(15)))
+  const spacing = 2 * inradius
+  const a: Vec2 = { x: spacing, y: 0 }
+  const b: Vec2 = { x: spacing / 2, y: (spacing * Math.sqrt(3)) / 2 }
+  const up = 1 / Math.sqrt(3)
+  return scaleTiling({
+    id: 'dodecagon-triangle',
+    cell: { origin: { x: 0, y: 0 }, a, b },
+    tiles: [
+      { id: 'dodecagon', verts: counterClockwise(regularPolygon({ x: 0, y: 0 }, 12, R12, 15)) },
+      {
+        id: 'triangle-a',
+        verts: counterClockwise(
+          regularPolygon({ x: (a.x + b.x) / 3, y: (a.y + b.y) / 3 }, 3, up, 30),
+        ),
+      },
+      {
+        id: 'triangle-b',
+        verts: counterClockwise(
+          regularPolygon({ x: (2 * (a.x + b.x)) / 3, y: (2 * (a.y + b.y)) / 3 }, 3, up, 90),
+        ),
       },
     ],
   }, scale)

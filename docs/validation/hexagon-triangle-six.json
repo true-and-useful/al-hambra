@@ -1,0 +1,30 @@
+{
+  "patternId": "hexagon-triangle-six",
+  "name": "Sixfold Garden",
+  "scaffold": "hexagon-triangle",
+  "contactAngleDegrees": {
+    "min": 61,
+    "max": 86,
+    "atDefault": 81
+  },
+  "sampleCount": 512,
+  "topology": {
+    "distinctSignatures": 1,
+    "signatureDigest": "a33da979083ef1058148d6dbab21f6deb330ee3c511d77d5ab39985ecc0564a2",
+    "signatureLength": 9919
+  },
+  "tolerance": {
+    "note": "Distance thresholds are fractions of the scaffold edge length.",
+    "scaffoldEdgeLength": 280,
+    "minimumEdgeLengthFraction": 0.01,
+    "warningClearanceFraction": 0.02,
+    "parameterPrecision": 0.0000152587890625,
+    "exclusionMargin": 0.005
+  },
+  "minimumObservedClearance": 10.839098353308247,
+  "minimumObservedEdgeLength": 70.01066296307246,
+  "suspectIntervals": [],
+  "excludedRanges": [],
+  "invariantErrors": [],
+  "valid": true
+}
