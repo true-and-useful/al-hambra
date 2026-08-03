@@ -3,7 +3,7 @@
 ## Automated gates
 
 - Strict TypeScript compilation
-- 39 unit tests covering graph invariants, translated-neighbor intersections, torus-representative normalization, self-crossing strand traversal, checkerboard weave assignment, torus wraps, scaffold well-formedness, contact-angle compilation, 512-sample topology/clearance sweeps, state/history, URL parsing, SVG serialization, and PNG boundaries
+- 42 unit tests covering graph invariants, translated-neighbor intersections, torus-representative normalization, self-crossing strand traversal, checkerboard weave assignment, torus wraps, scaffold well-formedness, contact-angle compilation, 512-sample topology/clearance sweeps, state/history, URL parsing, SVG serialization, and PNG boundaries
 - Chromium browser coverage at desktop and Pixel 7-shaped viewports
 - Direct drag, gesture commit, undo, design/palette switching, living URL restore, standalone SVG, PNG, 200% text zoom, overflow, 44 px visible targets, and axe-core accessibility checks
 - For every design default and one stressed morph/material/palette/view state, exact live/export visual-structure comparison plus isolated SVG-to-PNG raster comparison at a documented mean antialiasing tolerance

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -60,16 +60,30 @@ describe('stored range validation reports', () => {
       valid: report.valid,
     }
 
-    mkdirSync(reportDirectory, { recursive: true })
-    writeFileSync(
-      resolve(reportDirectory, `${pattern.id}.json`),
-      `${JSON.stringify(stored, null, 2)}\n`,
-    )
-
     // The stored digest has to describe the topology the app actually renders.
     const rendered = topologySignature(compilePattern(pattern, 0.5).graph)
     expect(createHash('sha256').update(rendered).digest('hex')).toBe(
       stored.topology.signatureDigest,
     )
+
+    // Compare against the committed baseline before overwriting it. Writing
+    // first and digesting what we just wrote would let a geometry regression
+    // silently rewrite the report instead of failing the build.
+    const reportPath = resolve(reportDirectory, `${pattern.id}.json`)
+    const committed = existsSync(reportPath)
+      ? (JSON.parse(readFileSync(reportPath, 'utf8')) as typeof stored)
+      : undefined
+    if (committed !== undefined && !process.env.UPDATE_VALIDATION_REPORTS) {
+      expect(
+        stored.topology.signatureDigest,
+        `${pattern.id} topology changed against its committed report; ` +
+        're-run with UPDATE_VALIDATION_REPORTS=1 once the change is intended',
+      ).toBe(committed.topology.signatureDigest)
+      expect(stored.contactAngleDegrees).toEqual(committed.contactAngleDegrees)
+      expect(stored.minimumObservedClearance).toBeCloseTo(committed.minimumObservedClearance, 6)
+    }
+
+    mkdirSync(reportDirectory, { recursive: true })
+    writeFileSync(reportPath, `${JSON.stringify(stored, null, 2)}\n`)
   }, 120_000)
 })

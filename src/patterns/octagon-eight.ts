@@ -22,7 +22,7 @@ export const octagonEight: PatternDefinition = {
   },
   tiling: octagonSquareTiling(SCALE),
   edgeLength: SCALE,
-  morph: { min: 46, max: 86, default: 0.55 },
+  morph: { min: 46, max: 86 },
   defaults: {
     morph: 0.55,
     material: 0.42,

@@ -90,7 +90,6 @@ export function buildContactPaths(
 ): ScenePath[] {
   const cell = tiling.cell
   const theta = (contactAngleDegrees * Math.PI) / 180
-  const cellSize = Math.hypot(cell.a.x, cell.a.y)
   const precision = 1e-6
 
   const geometry: TileGeometry[] = tiling.tiles.map((tile, index) => {
@@ -225,6 +224,5 @@ export function buildContactPaths(
   }
 
   if (paths.length === 0) throw new Error(`${tiling.id}: produced no strands`)
-  void cellSize
   return paths
 }

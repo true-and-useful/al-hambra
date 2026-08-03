@@ -22,7 +22,7 @@ export const dodecagonTwelve: PatternDefinition = {
   },
   tiling: dodecagonHexagonSquareTiling(SCALE),
   edgeLength: SCALE,
-  morph: { min: 61, max: 84, default: 0.5 },
+  morph: { min: 61, max: 84 },
   defaults: {
     morph: 0.5,
     material: 0.44,

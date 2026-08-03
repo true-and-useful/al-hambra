@@ -6,9 +6,9 @@ import type { LatticeCell, Vec2 } from './types'
  * Every tile is listed counter-clockwise with unit-length edges before scaling,
  * and the tile list is exactly one fundamental domain: each edge of each tile is
  * shared with exactly one other tile edge, possibly in a translated copy of the
- * cell. `validateTiling` enforces both properties, because a scaffold that is
- * not a genuine fundamental domain produces a silently broken pattern rather
- * than an error.
+ * cell. `tilingErrors` enforces all of it, because a scaffold that is not a
+ * genuine fundamental domain produces a silently broken pattern rather than an
+ * error.
  */
 export type TileDefinition = Readonly<{
   id: string
@@ -92,6 +92,43 @@ export function tilingErrors(tiling: TilingDefinition, edgeLength: number): stri
     errors.push(
       `tiles cover ${covered.toFixed(4)} but the cell is ${cellArea.toFixed(4)}`,
     )
+  }
+
+  // Matching area is not enough: the tiles also have to meet edge to edge. Pair
+  // edges by their midpoint modulo the lattice, which is exactly how the Hankin
+  // construction later finds each edge's neighbour. Catching a mispaired
+  // scaffold here names the tile; letting it reach the construction does not.
+  const determinant = tiling.cell.a.x * tiling.cell.b.y - tiling.cell.a.y * tiling.cell.b.x
+  if (Math.abs(determinant) > 0) {
+    const precision = 1e-6
+    const shared = new Map<string, string[]>()
+    for (const tile of tiling.tiles) {
+      for (let index = 0; index < tile.verts.length; index += 1) {
+        const a = tile.verts[index]
+        const b = tile.verts[(index + 1) % tile.verts.length]
+        if (!a || !b) continue
+        const x = (a.x + b.x) / 2 - tiling.cell.origin.x
+        const y = (a.y + b.y) / 2 - tiling.cell.origin.y
+        const u = (x * tiling.cell.b.y - y * tiling.cell.b.x) / determinant
+        const v = (tiling.cell.a.x * y - tiling.cell.a.y * x) / determinant
+        const local = (value: number): number => {
+          const nearest = Math.round(value)
+          const snapped = Math.abs(value - nearest) < precision ? nearest : value
+          return Math.round((snapped - Math.floor(snapped + precision)) / precision)
+        }
+        const key = `${local(u)}:${local(v)}`
+        const entries = shared.get(key) ?? []
+        entries.push(`${tile.id}#${index}`)
+        shared.set(key, entries)
+      }
+    }
+    for (const [key, entries] of shared) {
+      if (entries.length !== 2) {
+        errors.push(
+          `edge midpoint ${key} is shared by ${entries.length} tile edges (${entries.join(', ')}), expected 2`,
+        )
+      }
+    }
   }
   return errors
 }

@@ -435,22 +435,16 @@ function continuationComponents(
           (metadata.get(left)?.order ?? 0) - (metadata.get(right)?.order ?? 0),
         ),
       )
-    let ordered = chains[0]
+    const ordered = chains[0]
     if (!ordered) continue
-    const pending = chains.slice(1)
-    while (pending.length > 0) {
-      const tail = destinationOfEdge(ordered.at(-1) ?? '')
-      const head = edgeById.get(ordered[0] ?? '')?.origin
-      const index = pending.findIndex((chain) =>
-        edgeById.get(chain[0] ?? '')?.origin === tail ||
-        destinationOfEdge(chain.at(-1) ?? '') === head,
+    // Stitching several source paths into one continuation would also have to
+    // reverse a path authored against the traversal, which is a real design
+    // decision rather than a loop. Nothing emits multi-path continuations today,
+    // so refuse clearly instead of half-supporting it.
+    if (chains.length > 1) {
+      throw new Error(
+        `${continuationId} spans ${chains.length} source paths; multi-path continuations are not supported`,
       )
-      if (index < 0) throw new Error(`${continuationId} could not be traversed end to end`)
-      const [chain] = pending.splice(index, 1)
-      if (!chain) continue
-      ordered = edgeById.get(chain[0] ?? '')?.origin === tail
-        ? [...ordered, ...chain]
-        : [...chain, ...ordered]
     }
 
     for (let index = 1; index < ordered.length; index += 1) {
@@ -672,15 +666,19 @@ export function compilePeriodicArrangement(
 
   const faces = faceCycles(graphWithoutFaces)
   const assignments = checkerboardWeave(crossings, faces, mutableEdges)
-  // Every vertex having even degree guarantees a checkerboard exists, so a
-  // failure there is a real defect. Arrangements with loose ends have no
-  // alternating weave to find, and fall back to a stable arbitrary choice.
+  // Even degree everywhere makes the arrangement face-two-colourable in the
+  // plane, so lifting to the covering space and pushing the colouring back down
+  // succeeds for one of the four lattice parities whenever the lifted graph is
+  // connected. A failure under those conditions is a real defect rather than an
+  // unsupported pattern. Arrangements with loose ends have no alternating weave
+  // to find at all, and fall back to a stable arbitrary choice.
   const degrees = new Map<string, number>()
   for (const edge of mutableEdges) degrees.set(edge.origin, (degrees.get(edge.origin) ?? 0) + 1)
   const everyDegreeEven = [...degrees.values()].every((degree) => degree % 2 === 0)
   if (assignments === undefined && everyDegreeEven) {
     throw new Error(
-      'The arrangement faces are not two-colourable, so no alternating weave exists on this cell',
+      'No alternating weave found: the arrangement faces are not two-colourable ' +
+      'under any of the four lattice parities',
     )
   }
   const solvedCrossings = crossings.map((crossing) => ({

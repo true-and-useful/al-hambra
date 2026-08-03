@@ -80,10 +80,10 @@ export type PatternReference = Readonly<{
   note: string
 }>
 
+/** Curated contact-angle range in degrees that the user's [0,1] maps onto. */
 export type MorphMap = Readonly<{
   min: number
   max: number
-  default: number
 }>
 
 export type PatternDefaults = Readonly<{

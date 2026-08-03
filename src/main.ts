@@ -145,6 +145,7 @@ let wheelCommitTimer = 0
 let renderedPaletteSet = ''
 let renderedPaletteSelection = ''
 let renderedAccent = ''
+let renderedChrome = ''
 const capturedPointers = new Set<number>()
 
 function requireElement<T extends Element>(selector: string): T {
@@ -244,18 +245,22 @@ function paint(state: AppStateV1): void {
   const startedAt = performance.now()
   const pattern = currentPattern()
   const compiled = compilePattern(pattern, state.morph)
-  renderScene(svg, compiled.scene, state, paletteById(state.paletteId))
-  updateControls(state)
   const palette = paletteById(state.paletteId)
+  renderScene(svg, compiled.scene, state, palette)
+  updateControls(state)
   const accent = palette.accent
   if (renderedAccent !== accent) {
     renderedAccent = accent
     document.documentElement.style.setProperty('--accent', accent)
   }
   // The chrome sits directly on the artwork, so its ink has to follow the
-  // palette rather than assume a dark ground.
-  document.documentElement.dataset.chrome =
-    relativeLuminance(palette.background) > 0.4 ? 'light' : 'dark'
+  // palette rather than assume a dark ground. Only written when it changes;
+  // paint runs on every morph frame.
+  const chrome = relativeLuminance(palette.background) > 0.4 ? 'light' : 'dark'
+  if (renderedChrome !== chrome) {
+    renderedChrome = chrome
+    document.documentElement.dataset.chrome = chrome
+  }
   if (!document.body.dataset.patternReady) {
     document.body.dataset.patternReady = 'true'
     performance.mark('pattern-ready')

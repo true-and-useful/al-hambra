@@ -23,7 +23,7 @@ export const decagonTen: PatternDefinition = {
   },
   tiling: decagonRhombusTiling(SCALE),
   edgeLength: SCALE,
-  morph: { min: 57, max: 70, default: 0.5 },
+  morph: { min: 57, max: 70 },
   defaults: {
     morph: 0.5,
     material: 0.5,

@@ -24,6 +24,8 @@
  * keeps every palette legible without restyling each element.
  */
 :root[data-chrome="light"] {
+  /* Also flips UA-rendered surfaces: scrollbars, focus rings, form controls. */
+  color-scheme: light;
   --ink: #e8dcc2;
   --paper: #191410;
   --paper-soft: rgb(25 20 16 / 0.74);
