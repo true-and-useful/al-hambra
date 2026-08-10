@@ -1,5 +1,5 @@
 import type { AppStateV1 } from './state'
-import { underCrossingIndices, unwrapCycle } from './geometry/kernel'
+import { translateByWrap, unwrapCycle } from './geometry/kernel'
 import type { RenderScene, ScenePath, Vec2 } from './geometry/types'
 import type { Palette } from './palettes'
 
@@ -29,66 +29,6 @@ function polylineData(points: readonly Vec2[], closed: boolean): string {
   }
   if (closed) commands.push('Z')
   return commands.join(' ')
-}
-
-type Run = Readonly<{ points: readonly Vec2[]; closed: boolean }>
-
-/**
- * Splits a strand into the runs that are actually drawn, cutting a gap wherever
- * it passes beneath another strand.
- *
- * Cutting the strand that goes under is what makes the weave read. The
- * alternative -- painting the crossing over with a background-coloured patch --
- * also erases whatever unrelated geometry happens to sit nearby, which shows up
- * as gashes across untouched bands once the geometry gets tight.
- */
-function strandRuns(path: ScenePath, under: readonly number[], gap: number): Run[] {
-  const points = path.points
-  const segments = points.length - 1
-  if (segments < 1) return []
-  const loops = path.netWrap.u === 0 && path.netWrap.v === 0
-  const cuts = new Set(under)
-  if (cuts.size === 0 || gap <= 0) {
-    return [{ points: loops ? points.slice(0, segments) : points, closed: loops }]
-  }
-
-  const towards = (from: Vec2, to: Vec2): Vec2 => {
-    const dx = to.x - from.x
-    const dy = to.y - from.y
-    const length = Math.hypot(dx, dy)
-    if (length <= gap) return from
-    return { x: from.x + (dx / length) * gap, y: from.y + (dy / length) * gap }
-  }
-
-  const runs: Run[] = []
-  let current: Vec2[] = []
-  for (let index = 0; index <= segments; index += 1) {
-    const point = points[index]
-    if (!point) continue
-    // The final point is the first one in the next cell, so it carries the same
-    // crossing and has to be cut the same way.
-    const isCut = cuts.has(index === segments ? 0 : index)
-    if (!isCut) {
-      current.push(point)
-      continue
-    }
-    const previous = points[index - 1]
-    if (current.length > 0 && previous) current.push(towards(point, previous))
-    if (current.length > 1) runs.push({ points: current, closed: false })
-    const next = points[index + 1]
-    current = next ? [towards(point, next)] : []
-  }
-  if (current.length > 1) runs.push({ points: current, closed: false })
-
-  // A closed strand whose first vertex is not a cut starts and ends mid-run.
-  if (loops && !cuts.has(0) && runs.length > 1) {
-    const first = runs.shift()
-    const last = runs.pop()
-    if (first && last) {
-      runs.push({ points: [...last.points, ...first.points.slice(1)], closed: false })
-    }
-  }
-  return runs
 }
 
 function tileMetrics(scene: RenderScene): TileMetrics {
@@ -176,6 +116,69 @@ function strokeMarkup(
   ].join('')
 }
 
+/** True when the weave repeats on the cell, so one patch group can be reused. */
+function weaveRepeatsPerCell(scene: RenderScene): boolean {
+  return scene.graph.crossings.every(
+    (crossing) => crossing.weavePhase.u === 0 && crossing.weavePhase.v === 0,
+  )
+}
+
+/**
+ * Redraws a short length of the over-strand on top of every crossing.
+ *
+ * The strand that dives under is drawn whole and then covered here, so the edge
+ * that cuts it is the over-strand's own outline: parallel to the over-strand, at
+ * exactly the angle the two bands meet. Ending the under-strand with a stroke
+ * cap instead squares it off against its own direction, which is the wrong angle
+ * at every crossing that is not a right angle.
+ *
+ * The patch paints the over-band's own footprint and nothing wider, so unlike a
+ * background-coloured eraser it cannot mark geometry that merely passes nearby.
+ */
+function crossingPatches(
+  scene: RenderScene,
+  palette: Palette,
+  material: number,
+  translation: TileTranslation,
+): string {
+  const materialized = smoothstep(0.08, 0.34, material)
+  if (materialized === 0) return ''
+  const bandWidth = 2.2 + material * 24.6
+  const outlineWidth = bandWidth + materialized * (4 + material * 3)
+  const vertices = new Map(scene.graph.vertices.map((vertex) => [vertex.id, vertex]))
+  const edges = new Map(scene.graph.halfEdges.map((edge) => [edge.id, edge]))
+
+  const along = (armId: string, from: Vec2): Vec2 | undefined => {
+    const edge = edges.get(armId)
+    const twin = edge ? edges.get(edge.twin) : undefined
+    const target = twin ? vertices.get(twin.origin) : undefined
+    if (!edge || !target) return undefined
+    const to = translateByWrap(target.position, scene.cell, edge.wrap)
+    const length = Math.hypot(to.x - from.x, to.y - from.y)
+    if (length === 0) return undefined
+    return { x: (to.x - from.x) / length, y: (to.y - from.y) / length }
+  }
+
+  return scene.graph.crossings.map((crossing) => {
+    if (crossing.kind === 'contact') return ''
+    const centre = vertices.get(crossing.vertex)?.position
+    if (!centre) return ''
+    const phase = Math.abs(
+      crossing.weavePhase.u * translation.u + crossing.weavePhase.v * translation.v,
+    ) % 2
+    const overPair = (crossing.overPair ^ phase) as 0 | 1
+    const over = along(crossing.continuations[overPair][0], centre)
+    const under = along(crossing.continuations[overPair === 0 ? 1 : 0][0], centre)
+    if (!over || !under) return ''
+    // A shallow crossing needs a longer patch before it clears the under-band.
+    const sine = Math.max(Math.abs(over.x * under.y - over.y * under.x), 0.2)
+    const reach = Math.min(outlineWidth / 2 / sine + 1, outlineWidth * 3)
+    const start = { x: centre.x - over.x * reach, y: centre.y - over.y * reach }
+    const end = { x: centre.x + over.x * reach, y: centre.y + over.y * reach }
+    return strokeMarkup(polylineData([start, end], false), palette, material, 'ornament')
+  }).join('')
+}
+
 /**
  * Fills the enclosed regions of the arrangement.
  *
@@ -223,7 +226,12 @@ function faceClasses(scene: RenderScene): Map<string, number> {
   return new Map(measured.map((entry) => [entry.id, order.indexOf(key(entry))]))
 }
 
-function patternContent(scene: RenderScene, mosaic: boolean): string {
+function patternContent(
+  scene: RenderScene,
+  palette: Palette,
+  material: number,
+  mosaic: boolean,
+): string {
   const metrics = tileMetrics(scene)
   const translations = latticeTranslations(scene, metrics)
   const place = (id: string, translation: TileTranslation): string =>
@@ -234,7 +242,12 @@ function patternContent(scene: RenderScene, mosaic: boolean): string {
     ? translations.map((translation) => place('pattern-cell-faces', translation)).join('')
     : ''
   const paths = translations.map((translation) => place('pattern-cell-paths', translation)).join('')
-  return `${faces}${paths}`
+  // Patches paint after every strand, so an over-strand also covers the
+  // under-strand of a neighbouring cell and not just its own.
+  const crossings = weaveRepeatsPerCell(scene)
+    ? translations.map((translation) => place('pattern-cell-crossings', translation)).join('')
+    : translations.map((translation) => crossingPatches(scene, palette, material, translation)).join('')
+  return `${faces}${paths}${crossings}`
 }
 
 export function renderSceneMarkup(
@@ -254,37 +267,27 @@ export function renderSceneMarkup(
     RENDER_VIEWBOX.height / 2 - cellCenter.y * state.view.scale +
     (0.5 - state.view.cy) * metrics.height * state.view.scale
   const transform = `translate(${number(offsetX)} ${number(offsetY)}) scale(${number(state.view.scale)})`
-  // Gap the under-strand so the strand passing over reads as unbroken.
-  //
-  // The cut has to clear the square linecap, not just the band. A square cap
-  // extends half the stroke width past the point it was cut at, so a gap sized
-  // only to the band leaves the two dark outlines overlapping and paints a bar
-  // across the strand instead of opening a hole in it. Budget the cap first,
-  // then the visible daylight on top.
-  const bandWidth = 2.2 + state.material * 24.6
-  const materialized = smoothstep(0.08, 0.34, state.material)
-  const outlineWidth = bandWidth + materialized * (4 + state.material * 3)
-  const gap = materialized * (outlineWidth / 2 + bandWidth * 0.35 + 1.5)
-  const under = underCrossingIndices(scene.graph)
-  const cellPaths = scene.paths.map((path) =>
-    strandRuns(path, under.get(path.id) ?? [], gap)
-      .map((run) => strokeMarkup(
-        polylineData(run.points, run.closed),
-        palette,
-        state.material,
-        path.role,
-      ))
-      .join(''),
-  ).join('')
+  // Strands are drawn whole; the crossing patches put the over-strand back on
+  // top afterwards, which is what opens the weave.
+  const cellPaths = scene.paths.map((path) => strokeMarkup(
+    polylineData(path.points, path.closed),
+    palette,
+    state.material,
+    path.role,
+  )).join('')
   const mosaic = (palette.faces?.length ?? 0) > 0
   const cellFaces = mosaic ? faceMarkup(scene, palette) : ''
+  const cellCrossings = weaveRepeatsPerCell(scene)
+    ? crossingPatches(scene, palette, state.material, { x: 0, y: 0, u: 0, v: 0 })
+    : ''
   return [
     '<defs>',
     cellFaces ? `<g id="pattern-cell-faces">${cellFaces}</g>` : '',
     `<g id="pattern-cell-paths">${cellPaths}</g>`,
+    cellCrossings ? `<g id="pattern-cell-crossings">${cellCrossings}</g>` : '',
     `<pattern id="ornament" patternUnits="userSpaceOnUse" width="${number(metrics.width)}" height="${number(metrics.height)}" patternTransform="${transform}">`,
     `<rect x="0" y="0" width="${number(metrics.width)}" height="${number(metrics.height)}" fill="${palette.background}"/>`,
-    patternContent(scene, mosaic),
+    patternContent(scene, palette, state.material, mosaic),
     '</pattern>',
     '</defs>',
     `<rect x="0" y="0" width="${RENDER_VIEWBOX.width}" height="${RENDER_VIEWBOX.height}" fill="${palette.background}"/>`,

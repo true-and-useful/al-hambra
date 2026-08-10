@@ -263,43 +263,6 @@ export function strandScenePaths(graph: PeriodicGraph): ScenePath[] {
   }))
 }
 
-/**
- * For every strand, the indices along its rendered polyline where it dives under
- * another strand.
- *
- * This is what lets the renderer cut a gap into the strand that goes under,
- * rather than painting over the crossing and hoping only the intended strand was
- * beneath. Index `i` refers to the vertex the strand leaves along its edge `i`,
- * which is point `i` of the path `strandScenePaths` produces.
- */
-export function underCrossingIndices(graph: PeriodicGraph): Map<string, number[]> {
-  const edges = new Map(graph.halfEdges.map((edge) => [edge.id, edge]))
-  const crossingByVertex = new Map(graph.crossings.map((crossing) => [crossing.vertex, crossing]))
-  const result = new Map<string, number[]>()
-
-  for (const strand of graph.strands) {
-    const under: number[] = []
-    let tile: LatticeOffset = { u: 0, v: 0 }
-    for (let index = 0; index < strand.edges.length; index += 1) {
-      const edge = edges.get(strand.edges[index] ?? '')
-      if (!edge) continue
-      const crossing = crossingByVertex.get(edge.origin)
-      if (crossing !== undefined && crossing.kind === 'intersection') {
-        const pair = crossing.continuations.findIndex((arms) => arms.includes(edge.id))
-        if (pair >= 0) {
-          const phase = Math.abs(
-            crossing.weavePhase.u * tile.u + crossing.weavePhase.v * tile.v,
-          ) % 2
-          if (((crossing.overPair ^ phase) as number) !== pair) under.push(index)
-        }
-      }
-      tile = { u: tile.u + edge.wrap.u, v: tile.v + edge.wrap.v }
-    }
-    result.set(strand.id, under)
-  }
-  return result
-}
-
 export function topologySignature(graph: PeriodicGraph): string {
   const offset = (wrap: LatticeOffset): string => `${wrap.u},${wrap.v}`
   const edges = [...graph.halfEdges]
