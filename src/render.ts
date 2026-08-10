@@ -93,26 +93,54 @@ function latticeTranslations(scene: RenderScene, metrics: TileMetrics): TileTran
   return translations
 }
 
+/** Blends `over` onto `base` at `alpha`, so a sheen can be painted opaquely. */
+function blend(base: string, over: string, alpha: number): string {
+  const channels = (hex: string): number[] => {
+    const value = hex.replace('#', '')
+    return [0, 2, 4].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16))
+  }
+  const from = channels(base)
+  const to = channels(over)
+  const mixed = from.map((channel, index) =>
+    Math.round(channel + ((to[index] ?? channel) - channel) * Math.min(1, Math.max(0, alpha))),
+  )
+  return `#${mixed.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
+}
+
+/**
+ * Every layer is painted opaque on purpose.
+ *
+ * The crossing patches repaint a short length of the over-strand on top of what
+ * is already there. With translucent layers that second pass composites instead
+ * of replacing: band over band goes denser, outline over outline goes darker,
+ * and the patch shows up as a box on an otherwise clean strand. Opaque layers
+ * repaint identically, so the patch is invisible except where it covers the
+ * strand beneath. The sheen keeps its softness by being pre-blended against the
+ * band it sits on, which is a flat colour, rather than by carrying alpha.
+ */
 function strokeMarkup(
   d: string,
   palette: Palette,
   material: number,
   role: ScenePath['role'],
+  cap: 'square' | 'butt' = 'square',
 ): string {
   if (!d) return ''
   const bandWidth = 2.2 + material * 24.6
   const roleScale = role === 'strand' ? 0.42 : role === 'accent' ? 0.3 : 1
   const width = bandWidth * roleScale
   const color = role === 'accent' ? palette.accent : palette.strand
-  const opacity = role === 'strand' ? 0.2 + material * 0.12 : role === 'accent' ? 0.82 : 0.96
-  const common = `d="${d}" fill="none" stroke-linecap="square" stroke-linejoin="miter"`
+  const common = `d="${d}" fill="none" stroke-linecap="${cap}" stroke-linejoin="miter"`
   const materialized = smoothstep(0.08, 0.34, material)
+  // At no material the outline matches the band width and is covered by it, so
+  // painting it opaque still leaves fine linework looking like linework.
   const edgeWidth = width + materialized * (role === 'ornament' ? 4 + material * 3 : 2)
   const highlightWidth = Math.max(0.8, width * 0.1)
+  const sheen = blend(color, palette.highlight, materialized * (0.12 + material * 0.22))
   return [
-    `<path ${common} stroke="${palette.edge}" stroke-width="${number(edgeWidth)}" opacity="${number(opacity * materialized)}"/>`,
-    `<path ${common} stroke="${color}" stroke-width="${number(width)}" opacity="${number(opacity)}"/>`,
-    `<path ${common} stroke="${palette.highlight}" stroke-width="${number(highlightWidth)}" opacity="${number(materialized * (0.08 + material * 0.16))}"/>`,
+    `<path ${common} stroke="${palette.edge}" stroke-width="${number(edgeWidth)}"/>`,
+    `<path ${common} stroke="${color}" stroke-width="${number(width)}"/>`,
+    `<path ${common} stroke="${sheen}" stroke-width="${number(highlightWidth)}"/>`,
   ].join('')
 }
 
@@ -148,15 +176,21 @@ function crossingPatches(
   const vertices = new Map(scene.graph.vertices.map((vertex) => [vertex.id, vertex]))
   const edges = new Map(scene.graph.halfEdges.map((edge) => [edge.id, edge]))
 
-  const along = (armId: string, from: Vec2): Vec2 | undefined => {
+  // Direction of an arm leaving the crossing, plus how far it runs before the
+  // strand bends. The patch must not reach past that bend: beyond it the patch
+  // stops being collinear with the strand and its outline shows.
+  const along = (
+    armId: string,
+    from: Vec2,
+  ): Readonly<{ unit: Vec2; span: number }> | undefined => {
     const edge = edges.get(armId)
     const twin = edge ? edges.get(edge.twin) : undefined
     const target = twin ? vertices.get(twin.origin) : undefined
     if (!edge || !target) return undefined
     const to = translateByWrap(target.position, scene.cell, edge.wrap)
-    const length = Math.hypot(to.x - from.x, to.y - from.y)
-    if (length === 0) return undefined
-    return { x: (to.x - from.x) / length, y: (to.y - from.y) / length }
+    const span = Math.hypot(to.x - from.x, to.y - from.y)
+    if (span === 0) return undefined
+    return { unit: { x: (to.x - from.x) / span, y: (to.y - from.y) / span }, span }
   }
 
   return scene.graph.crossings.map((crossing) => {
@@ -167,15 +201,55 @@ function crossingPatches(
       crossing.weavePhase.u * translation.u + crossing.weavePhase.v * translation.v,
     ) % 2
     const overPair = (crossing.overPair ^ phase) as 0 | 1
-    const over = along(crossing.continuations[overPair][0], centre)
+    const overArms = crossing.continuations[overPair]
+    const forward = along(overArms[0], centre)
+    const backward = along(overArms[1], centre)
     const under = along(crossing.continuations[overPair === 0 ? 1 : 0][0], centre)
-    if (!over || !under) return ''
-    // A shallow crossing needs a longer patch before it clears the under-band.
-    const sine = Math.max(Math.abs(over.x * under.y - over.y * under.x), 0.2)
-    const reach = Math.min(outlineWidth / 2 / sine + 1, outlineWidth * 3)
-    const start = { x: centre.x - over.x * reach, y: centre.y - over.y * reach }
-    const end = { x: centre.x + over.x * reach, y: centre.y + over.y * reach }
-    return strokeMarkup(polylineData([start, end], false), palette, material, 'ornament')
+    if (!forward || !backward || !under) return ''
+    // How far the patch must run to clear the band passing underneath.
+    //
+    // It is the far CORNER of the over-band that has to escape the under-band,
+    // not its centreline, and the corner sits half a width off to the side.
+    // Clearing only the centreline leaves the under-strand's outline poking
+    // through the over-strand as a notch on each flank, and the shortfall grows
+    // as the crossing gets shallower.
+    const half = outlineWidth / 2
+    const sine = Math.max(
+      Math.abs(forward.unit.x * under.unit.y - forward.unit.y * under.unit.x),
+      0.2,
+    )
+    const cosine = Math.abs(forward.unit.x * under.unit.x + forward.unit.y * under.unit.y)
+    const wanted = (half * (1 + cosine)) / sine + 1
+    // The band and its sheen run slightly past the outline layer beneath them.
+    //
+    // All three layers ending on one line leaves the outline's antialiased cap
+    // showing along it as a hairline across the band, because the band painted
+    // over it stops on exactly the same line. Letting the band overshoot buries
+    // that fringe, and the band's own end is invisible: it meets more of the
+    // same band colour, already drawn there by the strand itself.
+    const overshoot = Math.max(0.75, outlineWidth * 0.05)
+    const reach = (span: number): Readonly<{ outline: number; band: number }> => {
+      const outline = Math.min(wanted, Math.max(0, span - overshoot))
+      return { outline, band: Math.min(outline + overshoot, span) }
+    }
+    const ahead = reach(forward.span)
+    const behind = reach(backward.span)
+    const at = (arm: typeof forward, distance: number): Vec2 => ({
+      x: centre.x + arm.unit.x * distance,
+      y: centre.y + arm.unit.y * distance,
+    })
+    const segment = (distances: Readonly<{ back: number; front: number }>): string =>
+      polylineData([at(backward, distances.back), at(forward, distances.front)], false)
+
+    const outlineD = segment({ back: behind.outline, front: ahead.outline })
+    const bandD = segment({ back: behind.band, front: ahead.band })
+    const common = 'fill="none" stroke-linecap="butt" stroke-linejoin="miter"'
+    const sheen = blend(palette.strand, palette.highlight, materialized * (0.12 + material * 0.22))
+    return [
+      `<path d="${outlineD}" ${common} stroke="${palette.edge}" stroke-width="${number(outlineWidth)}"/>`,
+      `<path d="${bandD}" ${common} stroke="${palette.strand}" stroke-width="${number(bandWidth)}"/>`,
+      `<path d="${bandD}" ${common} stroke="${sheen}" stroke-width="${number(Math.max(0.8, bandWidth * 0.1))}"/>`,
+    ].join('')
   }).join('')
 }
 
