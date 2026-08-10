@@ -1,6 +1,6 @@
 import type { AppStateV1 } from './state'
 import { translateByWrap, unwrapCycle } from './geometry/kernel'
-import type { RenderScene, ScenePath, Vec2 } from './geometry/types'
+import type { LatticeOffset, RenderScene, ScenePath, Vec2 } from './geometry/types'
 import type { Palette } from './palettes'
 
 export const RENDER_VIEWBOX = Object.freeze({ width: 1200, height: 800 })
@@ -144,6 +144,41 @@ function strokeMarkup(
   ].join('')
 }
 
+/**
+ * The points actually drawn for a strand.
+ *
+ * A closed strand arrives with its first point repeated at the end; drawing that
+ * AND closing with Z leaves a zero-length segment whose direction is undefined.
+ *
+ * A wrapping strand is cut at the cell boundary, and that cut usually lands on a
+ * bend. Drawn as-is, this copy ends with a cap square to its last segment while
+ * the neighbouring copy starts with a cap square to its first, and the two meet
+ * at an angle as a spray of spikes instead of a mitre. Carrying the path one
+ * segment past each end into the next cell turns both into ordinary mitred
+ * joins; the overlap is invisible because every layer is opaque and the
+ * neighbour paints exactly the same thing there.
+ */
+function drawablePoints(path: ScenePath, scene: RenderScene): readonly Vec2[] {
+  const points = path.points
+  if (points.length < 2) return points
+  if (path.closed) return points.slice(0, -1)
+
+  const wrap = {
+    x: scene.cell.a.x * path.netWrap.u + scene.cell.b.x * path.netWrap.v,
+    y: scene.cell.a.y * path.netWrap.u + scene.cell.b.y * path.netWrap.v,
+  }
+  if (wrap.x === 0 && wrap.y === 0) return points
+  const last = points.length - 1
+  const before = points[last - 1]
+  const after = points[1]
+  if (!before || !after) return points
+  return [
+    { x: before.x - wrap.x, y: before.y - wrap.y },
+    ...points,
+    { x: after.x + wrap.x, y: after.y + wrap.y },
+  ]
+}
+
 /** True when the weave repeats on the cell, so one patch group can be reused. */
 function weaveRepeatsPerCell(scene: RenderScene): boolean {
   return scene.graph.crossings.every(
@@ -160,8 +195,13 @@ function weaveRepeatsPerCell(scene: RenderScene): boolean {
  * cap instead squares it off against its own direction, which is the wrong angle
  * at every crossing that is not a right angle.
  *
- * The patch paints the over-band's own footprint and nothing wider, so unlike a
- * background-coloured eraser it cannot mark geometry that merely passes nearby.
+ * The patch follows the strand's real centreline rather than a straight segment.
+ * A straight patch that reached a star tip would end flat across a vertex the
+ * strand turns a sharp mitre at, cutting the point off and leaving a nub. Being
+ * a sub-path of the strand, this inherits the identical join.
+ *
+ * It never walks past the next crossing, because beyond that the same strand may
+ * be the one going under, and repainting there would put it on top.
  */
 function crossingPatches(
   scene: RenderScene,
@@ -173,16 +213,15 @@ function crossingPatches(
   if (materialized === 0) return ''
   const bandWidth = 2.2 + material * 24.6
   const outlineWidth = bandWidth + materialized * (4 + material * 3)
+  const overshoot = Math.max(0.75, outlineWidth * 0.05)
   const vertices = new Map(scene.graph.vertices.map((vertex) => [vertex.id, vertex]))
   const edges = new Map(scene.graph.halfEdges.map((edge) => [edge.id, edge]))
+  const crossingByVertex = new Map(
+    scene.graph.crossings.map((crossing) => [crossing.vertex, crossing]),
+  )
+  const pathById = new Map(scene.paths.map((path) => [path.id, path]))
 
-  // Direction of an arm leaving the crossing, plus how far it runs before the
-  // strand bends. The patch must not reach past that bend: beyond it the patch
-  // stops being collinear with the strand and its outline shows.
-  const along = (
-    armId: string,
-    from: Vec2,
-  ): Readonly<{ unit: Vec2; span: number }> | undefined => {
+  const armDirection = (armId: string, from: Vec2): Vec2 | undefined => {
     const edge = edges.get(armId)
     const twin = edge ? edges.get(edge.twin) : undefined
     const target = twin ? vertices.get(twin.origin) : undefined
@@ -190,67 +229,99 @@ function crossingPatches(
     const to = translateByWrap(target.position, scene.cell, edge.wrap)
     const span = Math.hypot(to.x - from.x, to.y - from.y)
     if (span === 0) return undefined
-    return { unit: { x: (to.x - from.x) / span, y: (to.y - from.y) / span }, span }
+    return { x: (to.x - from.x) / span, y: (to.y - from.y) / span }
   }
 
-  return scene.graph.crossings.map((crossing) => {
-    if (crossing.kind === 'contact') return ''
-    const centre = vertices.get(crossing.vertex)?.position
-    if (!centre) return ''
-    const phase = Math.abs(
-      crossing.weavePhase.u * translation.u + crossing.weavePhase.v * translation.v,
-    ) % 2
-    const overPair = (crossing.overPair ^ phase) as 0 | 1
-    const overArms = crossing.continuations[overPair]
-    const forward = along(overArms[0], centre)
-    const backward = along(overArms[1], centre)
-    const under = along(crossing.continuations[overPair === 0 ? 1 : 0][0], centre)
-    if (!forward || !backward || !under) return ''
-    // How far the patch must run to clear the band passing underneath.
-    //
-    // It is the far CORNER of the over-band that has to escape the under-band,
-    // not its centreline, and the corner sits half a width off to the side.
-    // Clearing only the centreline leaves the under-strand's outline poking
-    // through the over-strand as a notch on each flank, and the shortfall grows
-    // as the crossing gets shallower.
-    const half = outlineWidth / 2
-    const sine = Math.max(
-      Math.abs(forward.unit.x * under.unit.y - forward.unit.y * under.unit.x),
-      0.2,
-    )
-    const cosine = Math.abs(forward.unit.x * under.unit.x + forward.unit.y * under.unit.y)
-    const wanted = (half * (1 + cosine)) / sine + 1
-    // The band and its sheen run slightly past the outline layer beneath them.
-    //
-    // All three layers ending on one line leaves the outline's antialiased cap
-    // showing along it as a hairline across the band, because the band painted
-    // over it stops on exactly the same line. Letting the band overshoot buries
-    // that fringe, and the band's own end is invisible: it meets more of the
-    // same band colour, already drawn there by the strand itself.
-    const overshoot = Math.max(0.75, outlineWidth * 0.05)
-    const reach = (span: number): Readonly<{ outline: number; band: number }> => {
-      const outline = Math.min(wanted, Math.max(0, span - overshoot))
-      return { outline, band: Math.min(outline + overshoot, span) }
+  const markup: string[] = []
+  for (const strand of scene.graph.strands) {
+    const path = pathById.get(strand.id)
+    if (!path || path.points.length < 2) continue
+    const steps = path.points.length - 1
+    const wrap = {
+      x: scene.cell.a.x * path.netWrap.u + scene.cell.b.x * path.netWrap.v,
+      y: scene.cell.a.y * path.netWrap.u + scene.cell.b.y * path.netWrap.v,
     }
-    const ahead = reach(forward.span)
-    const behind = reach(backward.span)
-    const at = (arm: typeof forward, distance: number): Vec2 => ({
-      x: centre.x + arm.unit.x * distance,
-      y: centre.y + arm.unit.y * distance,
-    })
-    const segment = (distances: Readonly<{ back: number; front: number }>): string =>
-      polylineData([at(backward, distances.back), at(forward, distances.front)], false)
+    // Index beyond either end continues into the neighbouring cell, which is
+    // where the strand actually goes.
+    const pointAt = (index: number): Vec2 => {
+      const lap = Math.floor(index / steps)
+      const local = index - lap * steps
+      const base = path.points[local] ?? path.points[0]
+      if (!base) return { x: 0, y: 0 }
+      return { x: base.x + wrap.x * lap, y: base.y + wrap.y * lap }
+    }
 
-    const outlineD = segment({ back: behind.outline, front: ahead.outline })
-    const bandD = segment({ back: behind.band, front: ahead.band })
-    const common = 'fill="none" stroke-linecap="butt" stroke-linejoin="miter"'
-    const sheen = blend(palette.strand, palette.highlight, materialized * (0.12 + material * 0.22))
-    return [
-      `<path d="${outlineD}" ${common} stroke="${palette.edge}" stroke-width="${number(outlineWidth)}"/>`,
-      `<path d="${bandD}" ${common} stroke="${palette.strand}" stroke-width="${number(bandWidth)}"/>`,
-      `<path d="${bandD}" ${common} stroke="${sheen}" stroke-width="${number(Math.max(0.8, bandWidth * 0.1))}"/>`,
-    ].join('')
-  }).join('')
+    let tile: LatticeOffset = { u: 0, v: 0 }
+    for (let index = 0; index < steps; index += 1) {
+      const edge = edges.get(strand.edges[index] ?? '')
+      if (!edge) continue
+      const here = tile
+      tile = { u: tile.u + edge.wrap.u, v: tile.v + edge.wrap.v }
+      const crossing = crossingByVertex.get(edge.origin)
+      if (!crossing || crossing.kind === 'contact') continue
+      const pair = crossing.continuations.findIndex((arms) => arms.includes(edge.id))
+      if (pair < 0) continue
+      const phase = Math.abs(
+        crossing.weavePhase.u * (translation.u + here.u) +
+        crossing.weavePhase.v * (translation.v + here.v),
+      ) % 2
+      if (((crossing.overPair ^ phase) as number) !== pair) continue
+
+      const centre = pointAt(index)
+      const under = armDirection(crossing.continuations[pair === 0 ? 1 : 0][0], centre)
+      const over = armDirection(edge.id, centre)
+      if (!under || !over) continue
+      // The far CORNER of the over-band has to escape the under-band, not its
+      // centreline, and that corner sits half a width off to the side.
+      const half = outlineWidth / 2
+      const sine = Math.max(Math.abs(over.x * under.y - over.y * under.x), 0.2)
+      const cosine = Math.abs(over.x * under.x + over.y * under.y)
+      const wanted = (half * (1 + cosine)) / sine + 1
+
+      // Walk the strand's own points outward, stopping at the next crossing.
+      const walk = (direction: 1 | -1, limit: number): Vec2[] => {
+        const run: Vec2[] = [centre]
+        let left = limit
+        for (let step = 1; step <= 2 && left > 0; step += 1) {
+          const from = run[run.length - 1]
+          const to = pointAt(index + direction * step)
+          if (!from) break
+          const length = Math.hypot(to.x - from.x, to.y - from.y)
+          if (length < 1e-9) continue
+          if (left < length) {
+            run.push({
+              x: from.x + ((to.x - from.x) / length) * left,
+              y: from.y + ((to.y - from.y) / length) * left,
+            })
+            return run
+          }
+          run.push(to)
+          left -= length
+        }
+        return run
+      }
+      const trace = (limit: number): Vec2[] => {
+        const back = walk(-1, limit)
+        const ahead = walk(1, limit)
+        return [...back.slice(1).reverse(), ...ahead]
+      }
+
+      const outlineD = polylineData(trace(Math.max(0, wanted - overshoot)), false)
+      const bandD = polylineData(trace(wanted), false)
+      const common = 'fill="none" stroke-linecap="butt" stroke-linejoin="miter"' 
+      const sheen = blend(
+        palette.strand,
+        palette.highlight,
+        materialized * (0.12 + material * 0.22),
+      )
+      markup.push(
+        `<path d="${outlineD}" ${common} stroke="${palette.edge}" stroke-width="${number(outlineWidth)}"/>`,
+        `<path d="${bandD}" ${common} stroke="${palette.strand}" stroke-width="${number(bandWidth)}"/>`,
+        `<path d="${bandD}" ${common} stroke="${sheen}" stroke-width="${number(Math.max(0.8, bandWidth * 0.1))}"/>`,
+      )
+    }
+  }
+  return markup.join('')
 }
 
 /**
@@ -344,7 +415,7 @@ export function renderSceneMarkup(
   // Strands are drawn whole; the crossing patches put the over-strand back on
   // top afterwards, which is what opens the weave.
   const cellPaths = scene.paths.map((path) => strokeMarkup(
-    polylineData(path.points, path.closed),
+    polylineData(drawablePoints(path, scene), path.closed),
     palette,
     state.material,
     path.role,
