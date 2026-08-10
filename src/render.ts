@@ -254,11 +254,17 @@ export function renderSceneMarkup(
     RENDER_VIEWBOX.height / 2 - cellCenter.y * state.view.scale +
     (0.5 - state.view.cy) * metrics.height * state.view.scale
   const transform = `translate(${number(offsetX)} ${number(offsetY)}) scale(${number(state.view.scale)})`
-  // Gap the under-strand by half the widest ink plus a hair, so the strand that
-  // passes over reads as unbroken. At low material there is no gap to cut.
+  // Gap the under-strand so the strand passing over reads as unbroken.
+  //
+  // The cut has to clear the square linecap, not just the band. A square cap
+  // extends half the stroke width past the point it was cut at, so a gap sized
+  // only to the band leaves the two dark outlines overlapping and paints a bar
+  // across the strand instead of opening a hole in it. Budget the cap first,
+  // then the visible daylight on top.
   const bandWidth = 2.2 + state.material * 24.6
   const materialized = smoothstep(0.08, 0.34, state.material)
-  const gap = materialized * (bandWidth / 2 + 2 + state.material * 2)
+  const outlineWidth = bandWidth + materialized * (4 + state.material * 3)
+  const gap = materialized * (outlineWidth / 2 + bandWidth * 0.35 + 1.5)
   const under = underCrossingIndices(scene.graph)
   const cellPaths = scene.paths.map((path) =>
     strandRuns(path, under.get(path.id) ?? [], gap)
