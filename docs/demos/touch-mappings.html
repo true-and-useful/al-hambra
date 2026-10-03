@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Touch Mappings Demo</title>
+<style>
+:root {
+  --ink: #17130f;
+  --ink-soft: #3d3328;
+  --ink-faint: #7a6a58;
+  --paper: #f3ecdd;
+  --paper-deep: #e8dcc2;
+  --paper-line: #d3c4a6;
+  --panel: #ffffff;
+  --brick: #b85a35;
+  --lapis: #28557e;
+  --teal: #173f43;
+  --gold: #c99a4a;
+  --bg: var(--paper);
+  --fg: var(--ink);
+  --fg-soft: var(--ink-soft);
+  --fg-faint: var(--ink-faint);
+  --line: var(--paper-line);
+  --surface: var(--paper-deep);
+  --surface-raised: var(--panel);
+  --accent: var(--brick);
+  --accent-2: var(--lapis);
+  --demo-bg: var(--teal);
+  --font-display: "Iowan Old Style", Georgia, serif;
+  --font-body: "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17130f;
+    --fg: #ece2cd;
+    --fg-soft: #cbbd9e;
+    --fg-faint: #8f8067;
+    --line: #3a3128;
+    --surface: #211b15;
+    --surface-raised: #2a231b;
+    --accent: #d9885c;
+    --accent-2: #7ea7d1;
+    --demo-bg: #0f2a2d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17130f;
+  --fg: #ece2cd;
+  --fg-soft: #cbbd9e;
+  --fg-faint: #8f8067;
+  --line: #3a3128;
+  --surface: #211b15;
+  --surface-raised: #2a231b;
+  --accent: #d9885c;
+  --accent-2: #7ea7d1;
+  --demo-bg: #0f2a2d;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 17px;
+  line-height: 1.55;
+  padding: 0 16px 72px;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 74ch; margin-inline: auto; }
+.wide { max-width: 1100px; margin-inline: auto; }
+header { padding-block: 48px 8px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-faint); margin: 0 0 14px; }
+h1 { font-family: var(--font-display); font-weight: 500; font-size: clamp(34px, 6vw, 52px); line-height: 1.05; letter-spacing: -0.015em; margin: 0 0 16px; text-wrap: balance; }
+p { margin: 0 0 16px; text-wrap: pretty; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
+strong { font-weight: 650; }
+code { font-family: var(--font-mono); font-size: 0.86em; }
+/* ---- live construction ---- */
+.instrument {
+  margin: 40px 0 8px;
+  background: var(--demo-bg);
+  border-radius: 6px;
+  overflow: hidden;
+  color: #e8dcc2;
+}
+.instrument svg { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; user-select: none; }
+.instrument[data-mode="grab"] svg { cursor: grab; }
+.instrument-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+  padding: 12px 16px;
+  font-size: 14px;
+  background: rgba(0,0,0,0.25);
+}
+.instrument-bar .modes { display: inline-flex; border: 1px solid rgba(232,220,194,0.35); border-radius: 999px; overflow: hidden; }
+.instrument-bar button {
+  font: inherit; font-weight: 600; color: inherit; background: transparent; border: 0;
+  padding: 7px 16px; min-height: 36px; cursor: pointer;
+}
+.instrument-bar button[aria-pressed="true"] { background: #e8dcc2; color: #17130f; }
+.instrument-bar [data-readout] { font-family: var(--font-mono); font-size: 13px; opacity: 0.95; }
+.instrument-bar [data-readout] span { opacity: 0.6; }
+.instrument-bar [data-readout] b { font-weight: 700; }
+.instrument-hint { font-size: 14px; color: rgba(232,220,194,0.78); margin: 0; padding: 10px 16px 12px; background: rgba(0,0,0,0.25); }
+.caption { font-size: 14px; color: var(--fg-faint); margin: 8px 0 0; }
+
+.notes { margin-top: 32px; font-size: 15px; color: var(--fg-soft); }
+@media (max-width: 480px) { body { font-size: 16px; } }
+@media (prefers-reduced-motion: no-preference) { .instrument-bar button { transition: background 120ms ease; } }
+</style>
+</head>
+<body>
+<header class="wrap">
+  <p class="eyebrow">Pattern instrument · gesture demo · 21 Sep 2026</p>
+  <h1>Three ways to touch one pattern</h1>
+  <p>The same octagon–square construction under three mappings. <strong>Anchored</strong> is the recommendation: press near any star and drag toward or away from its centre, with a gain of 0.35 between finger and waist. <strong>Grab</strong> is the failed control condition: the waist follows the finger exactly, and you can feel how little travel that gives. <strong>Pad</strong> is the fallback. In Anchored and Grab, tapping a star cycles its ray pairing.</p>
+</header>
+<main class="wide">
+<div class="instrument" id="pic-demo" data-mode="anchor">
+  <div class="instrument-bar">
+    <span class="modes" role="group" aria-label="Interaction mode">
+      <button type="button" data-mode="anchor" aria-pressed="true">Anchored</button>
+      <button type="button" data-mode="grab" aria-pressed="false">Grab</button>
+      <button type="button" data-mode="pad" aria-pressed="false">Pad</button>
+    </span>
+    <span data-readout aria-live="polite"></span>
+  </div>
+  <svg viewBox="0 0 900 600" role="img" aria-label="Live octagon and square star pattern that responds to dragging"></svg>
+  <p class="instrument-hint" data-hint></p>
+</div>
+  <div class="wrap">
+    <p class="caption">One-point family only. Tapping a star cycles which ray meets which, a simplification of Kaplan's inner-layer count. δ, rosettes, interlacing and irregular tiles are not built here, so this demonstrates the scalar geometry and the feel of three mappings, nothing more.</p>
+    <div class="notes">
+      <p>This is a standalone sketch with its own small contact-ray generator. It does not use the app's kernel in <code>src/geometry/</code>. It was first published alongside the September design analysis and is kept here so the comparison it supports stays reproducible. Open this file directly in a browser; it has no dependencies.</p>
+      <p>Analysis: <a href="../ux-paradigms.md">ux-paradigms.md</a> for the paradigms, the gain and the device test it informs; <a href="../design-space.md">design-space.md</a> for the parameter space and the waist formula.</p>
+    </div>
+  </div>
+</main>
+<script>
+// Polygons-in-contact micro-instrument: 4.8.8 octagon+square tiling.
+// Whole image = f(theta, skipOct, band). Two ways to touch it: "pad" (drag anywhere)
+// and "grab" (drag a star tip, inverse-solve theta; tap a star to cycle its skip).
+(function () {
+  const root = document.getElementById('pic-demo');
+  if (!root) return;
+  const svg = root.querySelector('svg');
+  const readout = root.querySelector('[data-readout]');
+  const modeButtons = root.querySelectorAll('[data-mode]');
+  const hint = root.querySelector('[data-hint]');
+
+  const DEG = Math.PI / 180;
+  const R = 62; // octagon circumradius (SVG units)
+  const APO = R * Math.cos(22.5 * DEG);
+  const SIDE = 2 * R * Math.sin(22.5 * DEG);
+  const L = 2 * APO; // lattice spacing
+  const W = 900, H = 600;
+
+  const state = { theta: 52, skipOct: 1, band: 0.35, mode: 'anchor', palette: 0 };
+  const ANCHOR_GAIN = 0.35; // finger px -> waist px; whole range in roughly one thumb sweep
+  const palettes = [
+    { bg: '#173f43', line: '#e9c48f', band: '#c96c43', tile: 'rgba(255,255,255,0.035)' },
+    { bg: '#e8dcc2', line: '#172f48', band: '#28557e', tile: 'rgba(0,0,0,0.035)' },
+    { bg: '#111317', line: '#e3b27d', band: '#b36d3e', tile: 'rgba(255,255,255,0.04)' },
+  ];
+
+  function regular(cx, cy, n, r, rot) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const a = rot + (i / n) * Math.PI * 2;
+      pts.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
+    }
+    return pts;
+  }
+
+  // Build tiles covering the viewport plus a margin.
+  function tiles() {
+    const out = [];
+    const cols = Math.ceil(W / L) + 3, rows = Math.ceil(H / L) + 3;
+    for (let i = -1; i < cols; i++) {
+      for (let j = -1; j < rows; j++) {
+        const cx = i * L, cy = j * L;
+        out.push({ kind: 'oct', n: 8, cx, cy, pts: regular(cx, cy, 8, R, 22.5 * DEG) });
+        const sx = cx + L / 2, sy = cy + L / 2;
+        out.push({ kind: 'sq', n: 4, cx: sx, cy: sy, pts: regular(sx, sy, 4, SIDE / Math.SQRT2, 45 * DEG) });
+      }
+    }
+    return out;
+  }
+  const TILES = tiles();
+
+  function rayHit(p, d, q, e) {
+    // intersection of p + t d and q + u e, returns t,u
+    const det = d.x * e.y - d.y * e.x;
+    if (Math.abs(det) < 1e-9) return null;
+    const rx = q.x - p.x, ry = q.y - p.y;
+    const t = (rx * e.y - ry * e.x) / det;
+    const u = (rx * d.y - ry * d.x) / det;
+    return { t, u };
+  }
+
+  // Motif for one tile: for each edge i, a ray from the midpoint at angle theta (forward)
+  // meets the backward ray from edge i+skip. Returns segments and meeting points.
+  function motif(tile, thetaDeg, skip) {
+    const n = tile.n, pts = tile.pts, th = thetaDeg * DEG;
+    const mids = [], fwd = [], bwd = [];
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n];
+      const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      const ex = b.x - a.x, ey = b.y - a.y, len = Math.hypot(ex, ey);
+      const e = { x: ex / len, y: ey / len };
+      // inward normal: toward tile center
+      let nx = -e.y, ny = e.x;
+      if ((tile.cx - m.x) * nx + (tile.cy - m.y) * ny < 0) { nx = -nx; ny = -ny; }
+      mids.push(m);
+      fwd.push({ x: Math.cos(th) * e.x + Math.sin(th) * nx, y: Math.cos(th) * e.y + Math.sin(th) * ny });
+      bwd.push({ x: -Math.cos(th) * e.x + Math.sin(th) * nx, y: -Math.cos(th) * e.y + Math.sin(th) * ny });
+    }
+    const segs = [], meets = [];
+    let valid = true;
+    for (let i = 0; i < n; i++) {
+      const j = (i + skip) % n;
+      const hit = rayHit(mids[i], fwd[i], mids[j], bwd[j]);
+      if (!hit || hit.t <= 0 || hit.u <= 0) { valid = false; continue; }
+      const P = { x: mids[i].x + fwd[i].x * hit.t, y: mids[i].y + fwd[i].y * hit.t };
+      // must stay inside the tile: distance from center below apothem-ish bound
+      const r = Math.hypot(P.x - tile.cx, P.y - tile.cy);
+      const apothem = Math.hypot(mids[0].x - tile.cx, mids[0].y - tile.cy);
+      if (r > apothem * 1.0001) valid = false;
+      meets.push({ P, i, r });
+      segs.push([mids[i], P, mids[j]]);
+    }
+    return { segs, meets, valid };
+  }
+
+  function skipFor(tile) { return tile.kind === 'oct' ? state.skipOct : 1; }
+
+  // Valid theta interval for the current discrete choices (scan, then refine).
+  function thetaRange() {
+    const probe = (t) => TILES.slice(0, 2).every((tile) => motif(tile, t, skipFor(tile)).valid);
+    let lo = null, hi = null;
+    for (let t = 5; t <= 89; t += 0.5) {
+      if (probe(t)) { if (lo === null) lo = t; hi = t; }
+    }
+    return { lo: (lo ?? 30) + 1.5, hi: (hi ?? 80) - 1.5 };
+  }
+
+  const DEFAULT_THETA = { 1: 52, 2: 64, 3: 74 };
+
+  function pathD(seg) {
+    return `M${seg[0].x.toFixed(2)} ${seg[0].y.toFixed(2)} L${seg[1].x.toFixed(2)} ${seg[1].y.toFixed(2)} L${seg[2].x.toFixed(2)} ${seg[2].y.toFixed(2)}`;
+  }
+
+  let handles = [];
+  function render() {
+    const pal = palettes[state.palette];
+    const range = thetaRange();
+    state.theta = Math.min(range.hi, Math.max(range.lo, state.theta));
+    const bandW = 1.2 + state.band * 9;
+    let tilesD = '', linesD = '';
+    handles = [];
+    for (const tile of TILES) {
+      const m = motif(tile, state.theta, skipFor(tile));
+      tilesD += `M${tile.pts.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join('L')}Z`;
+      for (const s of m.segs) linesD += pathD(s);
+      for (const mt of m.meets) handles.push({ x: mt.P.x, y: mt.P.y, tile });
+    }
+    svg.innerHTML = `
+      <rect width="${W}" height="${H}" fill="${pal.bg}"/>
+      <path d="${tilesD}" fill="none" stroke="${pal.tile}" stroke-width="1"/>
+      <path d="${linesD}" fill="none" stroke="${pal.band}" stroke-width="${(bandW + 2.4).toFixed(2)}" stroke-linejoin="round" stroke-linecap="round" opacity="${(0.25 + state.band * 0.75).toFixed(2)}"/>
+      <path d="${linesD}" fill="none" stroke="${pal.line}" stroke-width="${bandW.toFixed(2)}" stroke-linejoin="round" stroke-linecap="round"/>
+      <g data-handles></g>`;
+    readout.innerHTML = `θ <b>${state.theta.toFixed(1)}°</b> <span>valid ${range.lo.toFixed(0)}–${range.hi.toFixed(0)}°</span> · skip <b>${state.skipOct}</b> · band <b>${state.band.toFixed(2)}</b>`;
+    root.dataset.mode = state.mode;
+    if (hint && !hint.dataset.set) { hint.textContent = HINTS[state.mode]; hint.dataset.set = '1'; }
+  }
+
+  const HINTS = {
+    pad: 'Pad: drag anywhere. Left–right changes the angle, up–down the band. Nothing under the finger is special. Tap to change palette.',
+    grab: 'Grab: take one of a star\u2019s inner corners and pull it; it follows the finger exactly. Note how little travel you get. Tap a star to change its ray pairing.',
+    anchor: 'Anchored: press near any star and drag toward or away from its centre; the star pinches or fattens with a gain, and every copy answers. Tap a star to change its ray pairing.',
+  };
+  // --- interaction ---
+  let gesture = null;
+  function svgPoint(evt) {
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX; pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+  function nearestHandle(p) {
+    let best = null, bd = 26;
+    for (const h of handles) {
+      const d = Math.hypot(h.x - p.x, h.y - p.y);
+      if (d < bd) { bd = d; best = h; }
+    }
+    return best;
+  }
+  function tileAt(p) {
+    let best = null, bd = Infinity;
+    for (const t of TILES) {
+      const d = Math.hypot(t.cx - p.x, t.cy - p.y);
+      if (d < bd) { bd = d; best = t; }
+    }
+    return best;
+  }
+  function showHandle(h, tile) {
+    const g = svg.querySelector('[data-handles]');
+    let out = '';
+    if (tile) {
+      for (const hh of handles) if (hh.tile === tile) out += `<circle cx="${hh.x.toFixed(1)}" cy="${hh.y.toFixed(1)}" r="5" fill="none" stroke="#fff" stroke-opacity="0.55" stroke-width="1.5"/>`;
+    }
+    if (h) out += `<circle cx="${h.x}" cy="${h.y}" r="9" fill="none" stroke="#fff" stroke-width="2"/><circle cx="${h.x}" cy="${h.y}" r="3" fill="#fff"/>`;
+    g.innerHTML = out;
+  }
+  // Solve theta so that the grabbed tip's radius matches the finger's radial projection.
+  function solveTheta(tile, dir, targetR) {
+    const range = thetaRange();
+    const rOf = (t) => {
+      const m = motif(tile, t, skipFor(tile));
+      // meeting point closest to the grabbed direction
+      let best = Infinity, br = 0;
+      for (const mt of m.meets) {
+        const dx = mt.P.x - tile.cx, dy = mt.P.y - tile.cy;
+        const ang = Math.abs(Math.atan2(dx * dir.y - dy * dir.x, dx * dir.x + dy * dir.y));
+        if (ang < best) { best = ang; br = mt.r; }
+      }
+      return br;
+    };
+    let lo = range.lo, hi = range.hi;
+    const rlo = rOf(lo), rhi = rOf(hi);
+    if (targetR <= Math.min(rlo, rhi)) return rlo < rhi ? lo : hi;
+    if (targetR >= Math.max(rlo, rhi)) return rlo > rhi ? lo : hi;
+    for (let k = 0; k < 40; k++) {
+      const mid = (lo + hi) / 2;
+      const rm = rOf(mid);
+      if ((rm < targetR) === (rlo < rhi)) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+
+  svg.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    svg.setPointerCapture(e.pointerId);
+    const p = svgPoint(e);
+    gesture = { start: p, theta0: state.theta, band0: state.band, moved: false, handle: null, tile: tileAt(p) };
+    if (state.mode === 'grab') {
+      const h = nearestHandle(p);
+      if (h) {
+        const dx = h.x - h.tile.cx, dy = h.y - h.tile.cy, len = Math.hypot(dx, dy);
+        gesture.handle = h;
+        gesture.dir = { x: dx / len, y: dy / len };
+        showHandle(h);
+      }
+    } else if (state.mode === 'anchor') {
+      // nearest star centre anchors the drag; nothing jumps because the drag is relative
+      const t = gesture.tile;
+      const dx = p.x - t.cx, dy = p.y - t.cy, len = Math.hypot(dx, dy) || 1;
+      gesture.dir = { x: dx / len, y: dy / len };
+      // current waist radius along this direction
+      let best = Infinity, pick = null;
+      const pressDir = gesture.dir;
+      for (const hh of handles) if (hh.tile === t) {
+        const ang = Math.abs(Math.atan2((hh.x - t.cx) * pressDir.y - (hh.y - t.cy) * pressDir.x, (hh.x - t.cx) * pressDir.x + (hh.y - t.cy) * pressDir.y));
+        if (ang < best) { best = ang; pick = hh; }
+      }
+      if (pick) {
+        gesture.r0 = Math.hypot(pick.x - t.cx, pick.y - t.cy);
+        gesture.dir = { x: (pick.x - t.cx) / gesture.r0, y: (pick.y - t.cy) / gesture.r0 };
+      }
+      gesture.anchor = t;
+      showHandle(null, t);
+    }
+  });
+  svg.addEventListener('pointermove', (e) => {
+    if (!gesture) {
+      if (state.mode === 'grab') showHandle(nearestHandle(svgPoint(e)));
+      return;
+    }
+    const p = svgPoint(e);
+    const dx = p.x - gesture.start.x, dy = p.y - gesture.start.y;
+    if (Math.hypot(dx, dy) > 4) gesture.moved = true;
+    if (!gesture.moved) return;
+    if (state.mode === 'pad') {
+      state.theta = gesture.theta0 + dx * 0.12;
+      state.band = Math.min(1, Math.max(0, gesture.band0 - dy * 0.004));
+      render();
+    } else if (state.mode === 'anchor' && gesture.anchor) {
+      const t = gesture.anchor;
+      const radial = dx * gesture.dir.x + dy * gesture.dir.y;
+      const targetR = gesture.r0 + radial * ANCHOR_GAIN;
+      state.theta = solveTheta(t, gesture.dir, targetR);
+      render();
+      showHandle(null, t);
+    } else if (gesture.handle) {
+      const t = gesture.handle.tile;
+      const targetR = (p.x - t.cx) * gesture.dir.x + (p.y - t.cy) * gesture.dir.y;
+      state.theta = solveTheta(t, gesture.dir, targetR);
+      render();
+      const h = handles.find((hh) => hh.tile === t && Math.abs(Math.atan2(hh.y - t.cy, hh.x - t.cx) - Math.atan2(gesture.dir.y, gesture.dir.x)) < 0.05);
+      showHandle(h ?? null);
+    }
+  });
+  function end(e) {
+    if (!gesture) return;
+    const g = gesture; gesture = null;
+    if (!g.moved) {
+      if ((state.mode === 'grab' || state.mode === 'anchor') && g.tile && g.tile.kind === 'oct' && !g.handle) {
+        state.skipOct = (state.skipOct % 3) + 1;
+        state.theta = DEFAULT_THETA[state.skipOct];
+      } else if (state.mode === 'pad') {
+        state.palette = (state.palette + 1) % palettes.length;
+      }
+      render();
+    }
+    showHandle(null);
+  }
+  svg.addEventListener('pointerup', end);
+  svg.addEventListener('pointercancel', end);
+
+  modeButtons.forEach((b) => b.addEventListener('click', () => {
+    state.mode = b.dataset.mode;
+    modeButtons.forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    hint.textContent = HINTS[state.mode];
+    render();
+  }));
+
+  render();
+})();
+
+</script>
+</body>
+</html>

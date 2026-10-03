@@ -44,3 +44,15 @@ output rather than the dev server.
 SVG output is intended for visual use. It is not a fabrication-ready cut file.
 
 The automated suite covers Chromium desktop and Android-shaped mobile viewports. Physical iOS Safari and Android Chrome gesture-feel checks remain required before calling the release final; see [docs/QA.md](docs/QA.md).
+
+## Design analysis (September 2026)
+
+The September analysis was written 2026-09-21 against 2ea77d8 and reconciled with
+codex/v1 at 25ce69d on 2026-10-03. Polygons-in-contact has shipped with five designs
+and automatic mosaic fills. The remaining question is the gesture model and the
+scope of motif choices, split contacts δ and user-selected per-class colour.
+
+- [docs/design-space.md](docs/design-space.md): what varies in a star pattern, which point moves, and what the current kernel supports or still lacks.
+- [docs/ux-paradigms.md](docs/ux-paradigms.md): candidate direct-manipulation paradigms, adversarial review findings, the P4 anchored drag plus chooser recommendation, and the device test that decides it.
+- [docs/ux-gesture-inventory.md](docs/ux-gesture-inventory.md): exhaustive gesture, conflict and micro-decision appendix.
+- [docs/demos/touch-mappings.html](docs/demos/touch-mappings.html): standalone sketch for feeling the anchored, literal and pad mappings on one construction; open it directly in a browser.

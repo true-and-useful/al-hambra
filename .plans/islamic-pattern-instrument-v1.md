@@ -14,7 +14,9 @@ uses a checkerboard colouring rather than the per-strand constraint solver. The 
 changed accordingly and every design is now labelled `inspired by`, since none is a
 reconstruction of the monument it cites.
 
-**Target repository:** `/Users/davidwilson/code/islamic-patterns` → `true-and-useful/islamic-patterns` (working name; verify availability before creation)
+**2026-09-21 design analysis, reconciled 2026-10-03:** The analysis was written against 2ea77d8 and is now reconciled with codex/v1 at 25ce69d. Polygons-in-contact has shipped (8573574); the collection has five designs and automatic mosaic face fills (23bd928). The remaining scope questions are the gesture model, motif choices, split contacts δ and user-selected per-class colour. See [design-space.md](../docs/design-space.md#scope-changes-relative-to-the-plan) for what shipped and what remains open, [ux-paradigms.md](../docs/ux-paradigms.md) for the P4 anchored-drag recommendation and device gate, and [ux-gesture-inventory.md](../docs/ux-gesture-inventory.md) for the preserved proposal inventory. The original work units below remain the plan history; this note records the later scope changes.
+
+**Target repository:** `/Users/davidwilson/code/al-hambra` → `true-and-useful/al-hambra`
 
 ## Product intent
 
@@ -312,8 +314,8 @@ Golden screenshots are limited to representative states. They do not replace the
 
 ## Open questions
 
-- **Working name:** `islamic-patterns` is descriptive, not a product-name decision. Confirm the repo slug before U1.
-- **Reference corpus:** the required launch set and strongest optional candidates are intentionally decided in U0. Choosing them is architecture work, not content polish.
+- **Working name:** the repository slug is settled as `true-and-useful/al-hambra`; the product-name decision remains separate.
+- **Reference corpus:** the shipped five-design collection is recorded in [PATTERNS.md](../docs/PATTERNS.md) and [src/patterns/registry.ts](../src/patterns/registry.ts). Future candidates still need construction and provenance review; the launch corpus is no longer an open U0 decision.
 - **Reference devices:** name one actual iPhone, one Android phone, and one laptop before AC-9 and AC-10 are measured. A remote-device service may stand in when physical Android hardware is unavailable, but touch emulation alone is not the final mobile check.
 - **Collection growth:** three is the launch floor because it creates meaningful choice after the easy/adversarial pair. It is not a cap. Optional patterns must add a distinct visual experience and pass the same full-range review.
 
